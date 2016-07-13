@@ -56,7 +56,7 @@ void key_callback( GLFWwindow* window, int key, int scancode, int action, int mo
         }
 }
 
-void DrawDisk(float cx, float cy, float r ) { 
+void GuiWorld::DrawDisk(float cx, float cy, float r ) { 
     const int num_segments = 32.0 * sqrtf( r );
     const float theta = 2 * M_PI / float(num_segments); 
     const float c = cosf(theta);//precalculate the sine and cosine
@@ -81,7 +81,7 @@ void DrawDisk(float cx, float cy, float r ) {
     glEnd();
 }
 
-void DrawCircle(float cx, float cy, float cr) {
+void GuiWorld::DrawCircle(float cx, float cy, float cr) {
     const int lineAmount = 32.0 * sqrtf(cr);
     float twicePi = M_PI * 2.0f;
 
@@ -95,7 +95,7 @@ void DrawCircle(float cx, float cy, float cr) {
     glEnd();
 }
 
-void DrawBody( b2Body* b, const float color[3] ) {
+void GuiWorld::DrawBody( b2Body* b, const float color[3] ) {
     for (b2Fixture* f = b->GetFixtureList(); f; f = f->GetNext()){
         switch( f->GetType() ){
             case b2Shape::e_circle:
@@ -120,18 +120,17 @@ void DrawBody( b2Body* b, const float color[3] ) {
                 }
                 glEnd();		  
 
-                glLineWidth( 2.0 );
-                glColor3f( color[0]/5, color[1]/5, color[2]/5 );
-                //glColor3fv( color );
-                //glColor3f( 0,0,0 );
-                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                glBegin( GL_POLYGON );	
-                for( int i = 0; i < count; i++ ){
-                    const b2Vec2& v = poly->GetVertex( i );		 
-                    const b2Vec2 w = b->GetWorldPoint( v );		 
-                    glVertex2f( w.x, w.y );
-                }
-                glEnd();		  
+                glLineWidth( 3.0 );
+                // glColor3f( color[0]/5, color[1]/5, color[2]/5 );
+                // // TODO: this line in particular is related to the circles not being properly filled in... I wonder why
+                // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                // glBegin( GL_POLYGON );	
+                // for( int i = 0; i < count; i++ ){
+                //     const b2Vec2& v = poly->GetVertex( i );		 
+                //     const b2Vec2 w = b->GetWorldPoint( v );		 
+                //     glVertex2f( w.x, w.y );
+                // }
+                // glEnd();		  
                 }
                 break;
             default:
@@ -140,20 +139,21 @@ void DrawBody( b2Body* b, const float color[3] ) {
     } 
 }
 
-void Draw( LightController& lightCTRL, const float color[3] ){
+void GuiWorld::Draw( LightController& lightCTRL, const float color[3] ){
     glColor4f( color[0], color[1], color[2], 0.5 );
     for( std::vector<Light*>::iterator it = lightCTRL.lights.begin(); it != lightCTRL.lights.end(); it++ ){
-        DrawDisk( (*it)->x,(*it)->y,lightCTRL.radiusSmall );
-        DrawDisk( (*it)->x,(*it)->y,lightCTRL.radiusLarge );
+        b2Vec2 light = (*it)->GetCenter();
+        DrawDisk( light.x, light.y, lightCTRL.radiusSmall );
+        DrawDisk( light.x, light.y, lightCTRL.radiusLarge );
     }
 }
 
-void Draw( const std::vector<Box*>& bodies, const float color[3] ){
+void GuiWorld::Draw( const std::vector<Box*>& bodies, const float color[3] ){
     for( int i=0; i<bodies.size(); i++ )
         DrawBody( bodies[i]->body, color );
 }
 
-void Draw( const std::vector<Robot*>& robots, const float color[3] ){
+void GuiWorld::Draw( const std::vector<Robot*>& robots, const float color[3] ){
     for( int i=0; i<robots.size(); i++ ) {
         DrawBody( robots[i]->body, color );
         DrawBody( robots[i]->bumper, c_darkred );
@@ -177,25 +177,25 @@ void Draw( const std::vector<Robot*>& robots, const float color[3] ){
     glEnd();
 }
 
-void Draw( const std::vector<b2Body*>& walls, const float color[3] ){
+void GuiWorld::Draw( const std::vector<b2Body*>& walls, const float color[3] ){
     for( int i=0; i<walls.size(); i++ )
         DrawBody( walls[i], color );
 }
 
-void Draw( const std::vector<Goal*>& goals, const float color[3] ){
+void GuiWorld::Draw( const std::vector<Goal*>& goals, const float color[3] ){
     glColor3fv( color );
     for (int i=0; i<goals.size(); ++i){
-        DrawCircle(goals[i]->x, goals[i]->y, goals[i]->r);
+        b2Vec2 goal = goals[i]->GetCenter();
+        DrawCircle(goal.x, goal.y, goals[i]->r);
     }
 }
 
-GuiWorld::GuiWorld( float width, float height, float boxDiam, LightController& lightCTRL ) : 
-    World( width, height, boxDiam ),
-    lightCTRL( lightCTRL ),
+GuiWorld::GuiWorld( float width, float height, float boxDiam, int numRobots, int numBoxes ) : 
+    World( width, height, boxDiam, numRobots, numBoxes ),
     window(NULL),
     draw_interval( skip ) {
-    srand48( time(NULL) );  
 
+    srand48( time(NULL) );  
     /* Initialize the gui library */
     if (!glfwInit()) {
         std::cout << "Failed glfwInit()" << std::endl;
@@ -227,10 +227,7 @@ GuiWorld::GuiWorld( float width, float height, float boxDiam, LightController& l
     glfwSetKeyCallback (window, key_callback);
 }
 
-void GuiWorld::Step( float timestep, 
-        const std::vector<Robot*>& robots, 
-        const std::vector<Box*>& bodies,
-        const std::vector<Goal*>& goals ) {
+void GuiWorld::Step( float timestep ){
     if( !paused || step) {
         World::Step( timestep );
         step = false;
@@ -244,12 +241,15 @@ void GuiWorld::Step( float timestep,
         glClearColor( 1, 1, 0.6, 1 ); 
         glClear(GL_COLOR_BUFFER_BIT);	
 
-        // ===> DRAW: field objects
+        glPolygonOffset( 1.0, 1.0 ); 
         Draw( lightCTRL, c_light );
         Draw( goals, c_green );
-        Draw( bodies, c_gray );
-        Draw( groundBody, c_black );
+
+        // ===> DRAW: field objects
+        glPolygonOffset( 0, 0 ); 
+        Draw( boxes, c_gray );
         Draw( robots, c_red );
+        Draw( groundBody, c_black );
 
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
@@ -259,10 +259,10 @@ void GuiWorld::Step( float timestep,
     }
 }
 
-GuiWorld::~GuiWorld( void ) {
+GuiWorld::~GuiWorld( void ){
     glfwTerminate();
 }
 
-bool GuiWorld::RequestShutdown( void ) {
+bool GuiWorld::RequestShutdown( void ){
     return glfwWindowShouldClose(window);
 }

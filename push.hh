@@ -1,121 +1,62 @@
+#ifndef PUSH_H
+#define PUSH_H
+
+#include <math.h>
+#include <string>
+#include <vector>
+
 #include <Box2D/Box2D.h>
 #include <GLFW/glfw3.h>
 
-#include <math.h>
-#include <vector>
+class World;
 
-class Robot;
-
-class World {
-    public:    
-        b2World* b2world;
-        std::vector<b2Body*> groundBody;
-        float width, height, boxDiam;
-        
-        World( float width, float height, float boxDiam ) :
-            width(width),
-            height(height),
-            boxDiam(boxDiam),
-            b2world( new b2World( b2Vec2( 0,0 ))) // gravity 
-        {
-            b2BodyDef groundBodyDef;
-            groundBodyDef.type = b2_staticBody;
-            b2PolygonShape groundBox;
-            groundBox.SetAsBox( width/2.0, 0.05f );    
-            
-            int walls = 8;
-            //b2Body* groundBody[walls];
-            for( int i = 0; i < walls; i++ ) {
-                b2Body* wall = b2world->CreateBody(&groundBodyDef);	
-                wall->CreateFixture(&groundBox, 0.05f); // Second parameter is density
-                groundBody.push_back(wall);
-            }
-            
-            groundBody[0]->SetTransform( 
-                    b2Vec2( width/2, 0 ), 
-                    0 );    
-            groundBody[1]->SetTransform( 
-                    b2Vec2( width/2, height ), 
-                    0 );    
-            groundBody[2]->SetTransform( 
-                    b2Vec2( 0, height/2 ), 
-                    M_PI/2.0 );    
-            groundBody[3]->SetTransform( 
-                    b2Vec2( width, height/2 ), 
-                    M_PI/2.0 );    
-            groundBody[4]->SetTransform( 
-                    b2Vec2( boxDiam, boxDiam ), 
-                    3*M_PI/4.0 );    
-            groundBody[5]->SetTransform( 
-                    b2Vec2( width-boxDiam, boxDiam ), 
-                    M_PI/4.0 );    
-            groundBody[6]->SetTransform( 
-                    b2Vec2( width-boxDiam, height-boxDiam ), 
-                    3*M_PI/4.0 );    
-            groundBody[7]->SetTransform( 
-                    b2Vec2( boxDiam, height-boxDiam ), 
-                    M_PI/4.0 );    
-        }
-        
-        void Step( float timestep ){
-            const int32 velocityIterations = 6;
-            const int32 positionIterations = 2;
-            
-            // Instruct the world to perform a single step of simulation.
-            // It is generally best to keep the time step and iterations fixed.
-            b2world->Step( timestep, velocityIterations, positionIterations);	
-        }
-}; // END World class
-
-class Goal {
+class WorldObject {
+    protected:
+        b2Vec2 center;
     public:
-        float x, y, r;  // r: radius for circle or sidelen/2 for square
+        WorldObject( float x, float y ) : center( b2Vec2(x,y) ){}
+        float DistanceTo( const WorldObject& other ){
+            return sqrt(pow(center.x-other.center.x,2) + pow(center.y-other.center.y,2));             
+        }
+        b2Vec2 GetCenter(){ return center; }
+        void WhereAmI(std::string objectType){
+            std::cout << objectType << ": (" << center.x << "," << center.y << ")" << std::endl;
+        }
+}; // END WorldObject class
+
+class Goal : public WorldObject {
+    public:
+        float r;  // r: radius for circle or sidelen/2 for square
         bool filled;
-        Goal (float x, float y, float r):
-            x(x), y(y), r(r), filled(false) {}
+        Goal (float x, float y, float r): 
+            WorldObject(x,y), r(r), filled(false){}
         ~Goal(){}
+        void WhereAmI(){ WorldObject::WhereAmI("Goal"); }
 }; // END Goal class
 
-class Box {
+class Box : public WorldObject {
     public:
         static float size; 
         b2Body* body;
         
-        Box( World& world ) : 
-            body(NULL) {
-            b2PolygonShape dynamicBox;
-            dynamicBox.SetAsBox( size/2.0, size/2.0 );
-            b2CircleShape dynamicCircle;
-            dynamicCircle.m_p.Set(0,0);
-            dynamicCircle.m_radius = size/2.0f;
-            
-            b2FixtureDef fixtureDef;
-            fixtureDef.shape = &dynamicCircle;
-            fixtureDef.density = 2.0;
-            fixtureDef.friction = 1.0;
-            fixtureDef.restitution = 0.1;
-            
-            b2BodyDef bodyDef;
-            bodyDef.type = b2_dynamicBody;
-            
-            body = world.b2world->CreateBody(&bodyDef);    
-            body->SetLinearDamping( 10.0 );
-            body->SetAngularDamping( 10.0 );
-            body->SetTransform( b2Vec2( world.width * drand48(), world.height * drand48()), 0 );	    	    
-              
-            body->CreateFixture(&fixtureDef);
+        Box( World& world );
+        b2Vec2 GetCenter(){
+            center = (body->GetWorldCenter());
+            return center;
         }
+        void WhereAmI(){ WorldObject::WhereAmI("Box"); }
 }; // END Box class
 
-class Light {
+class Light : public WorldObject {
     public:
-        float x, y; // location
-
-    Light( float x, float y ) : x(x), y(y){}
-    ~Light(){}
-    float GetIntensity( float dx, float dy ){
-        return 1 - 1.0/(1 + pow(x-dx,2) + pow(y-dy,2)); 
-    }
+        Light( float x, float y ) : WorldObject(x,y){}
+        ~Light(){}
+        float GetIntensity( float dx, float dy ){
+            return 1 - 1.0/(1+pow(center.x-dx,2)+pow(center.y-dy,2)); 
+        }
+        void SetCenter( float x, float y ){ center = b2Vec2(x,y); }
+        void SetCenter( b2Vec2 here ){ center = here; }
+        void WhereAmI(){ WorldObject::WhereAmI("Light"); }
 }; // END Light class
 
 class LightController {
@@ -132,34 +73,17 @@ class LightController {
         float radiusSmall;  // Radius at which robot will not enter 
         float radiusLarge;  // Robot will backup out of this radius
 
-        LightController( 
-                std::vector<Goal*>& goals,
-                float goalError = 0.1, 
-                float radiusSmall = 1.0,
-                float radiusLarge = 1.5) :
-            goalError(goalError),
-            radiusSmall(radiusSmall),
-            radiusLarge(radiusLarge){
-
-            lightSmall = RadiusToIntensity( radiusSmall );
-            lightLarge = RadiusToIntensity( radiusLarge );
-            for( int i = 0; i < goals.size(); i++){
-                lights.push_back( 
-                        new Light( goals[i]->x, goals[i]->y) );
-            }
-        }
-        ~LightController(){
-            for( int i = 0; i < lights.size(); i++)
-                delete lights[i];
-        }
+        LightController( float goalError = 0.1, float radiusSmall = 1.0, float radiusLarge = 1.5);
+        ~LightController();
         float GetSmallLight( void ){ return lightSmall; }
         float GetLargeLight( void ){ return lightLarge; }
         float GetIntensity( float x, float y );
+        void SetGoals( std::vector<Goal*>& goals );
         void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes );
         //void PairGoalsAndBoxes( void );
 }; // END LightController Class
 
-class Robot {
+class Robot : public WorldObject{
     public:
         static float size;
         static LightController* lightCTRL; 
@@ -168,6 +92,7 @@ class Robot {
         b2PrismaticJoint* joint;
         
         Robot( World& world, float x, float y, float a);      
+        void WhereAmI() { WorldObject::WhereAmI("Robot"); }
         virtual void Update( float timestep ) = 0; // pure 
 
     protected:
@@ -179,7 +104,38 @@ class Robot {
         void SetSpeed( float x, float y, float a );
 }; // END Robot class
 
+class World {
+    protected:
+        std::vector<Goal*> goals;
+        std::vector<Box*> boxes;
+        std::vector<Robot*> robots;
+        std::vector<b2Body*> groundBody;    // Walls
+        LightController lightCTRL;
+
+        void BuildWalls( void ); 
+        void AddGoals( void );
+        void AddRobots( int numRobots );
+        void AddBoxes( int numBoxes );
+
+    public:  
+        b2World* b2world;
+        float width, height, boxDiam;
+
+        World( float width, float height, float boxDiam, int numRobots, int numBoxes ); 
+        void Step( float timestep );
+}; // END World class
+
 class GuiWorld : public World {
+        // -> Helper Functions
+        void DrawDisk( float cx, float cy, float r );
+        void DrawCircle( float cx, float cy, float cr );
+        void DrawBody( b2Body* b, const float color[3] );
+        void Draw( LightController& lightCTRL, const float color[3] );
+        void Draw( const std::vector<Box*>& bodies, const float color[3] );
+        void Draw( const std::vector<Robot*>&robots, const float color[3] );
+        void Draw( const std::vector<b2Body*>& walls, const float color[3] );
+        void Draw( const std::vector<Goal*>& goals, const float color[3] );
+
     public:
         static bool paused;
         static bool step;
@@ -187,15 +143,37 @@ class GuiWorld : public World {
 
         GLFWwindow* window;
         int draw_interval;
-        LightController lightCTRL;
 
-        GuiWorld( float width, float height, float boxDiam, LightController& lightCTRL );
+        GuiWorld( float width, float height, float boxDiam, int numRobots, int numBoxes );
         ~GuiWorld();
-
-        virtual void Step( float timestep,
-                 const std::vector<Robot*>& robots, 
-                 const std::vector<Box*>& bodies, 
-                 const std::vector<Goal*>& goals);
-
+        void Step( float timestep );
         bool RequestShutdown();
 }; // END GuiWorld class
+
+class Pusher : public Robot {
+    private:
+        typedef enum {
+            S_PUSH = 0,
+            S_BACKUP_LONG,
+            S_BACKUP_SHORT,
+            S_TURN,
+            S_COUNT
+        } control_state_t;
+
+        static const float PUSH, BACKUP, TURNMAX;
+        static const float SPEEDX, SPEEDA;
+        static const float maxspeedx, maxspeeda;
+
+        float timeleft;
+        control_state_t state;
+        float speedx, speeda;
+        float epsilon;   // spawn away from wall
+        int turnRight;
+
+    public:
+    // constructor
+    Pusher( World& world, float epsilon );
+    void Update( float timestep );
+}; // END Pusher class
+
+#endif

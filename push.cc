@@ -7,10 +7,127 @@ LightController* Robot::lightCTRL;
 float Box::size;
 float Robot::size;
 
+// ===> WORLD class methods
+World::World( float width, float height, float boxDiam, int numRobots, int numBoxes ) :
+    width(width),
+    height(height),
+    boxDiam(boxDiam),
+    lightCTRL(LightController( 0.1, 1.0, 1.2 )),
+    b2world( new b2World( b2Vec2( 0,0 ))) // gravity 
+{
+    std::cout << "Starting " << width << "x" << height << " World... robots: " << numRobots << " boxes: " << numBoxes << std::endl;
+    BuildWalls();
+    AddGoals();
+    AddRobots(numRobots);
+    AddBoxes(numBoxes);
+    lightCTRL.SetGoals(goals);
+    Robot::lightCTRL = &lightCTRL;
+}
+
+void World::BuildWalls( void ){
+    b2BodyDef groundBodyDef;
+    groundBodyDef.type = b2_staticBody;
+    b2PolygonShape groundBox;
+    groundBox.SetAsBox( width/2.0, 0.05f );    
+    
+    int walls = 8;
+    for( int i = 0; i < walls; i++ ) {
+        b2Body* wall = b2world->CreateBody(&groundBodyDef); 
+        wall->CreateFixture(&groundBox, 0.05f); // Second parameter is density
+        groundBody.push_back(wall);
+    }
+    
+    // -> Sets the wall arrangements
+    groundBody[0]->SetTransform( 
+            b2Vec2( width/2, 0 ), 
+            0 );    
+    groundBody[1]->SetTransform( 
+            b2Vec2( width/2, height ), 
+            0 );    
+    groundBody[2]->SetTransform( 
+            b2Vec2( 0, height/2 ), 
+            M_PI/2.0 );    
+    groundBody[3]->SetTransform( 
+            b2Vec2( width, height/2 ), 
+            M_PI/2.0 );    
+    groundBody[4]->SetTransform( 
+            b2Vec2( boxDiam, boxDiam ), 
+            3*M_PI/4.0 );    
+    groundBody[5]->SetTransform( 
+            b2Vec2( width-boxDiam, boxDiam ), 
+            M_PI/4.0 );    
+    groundBody[6]->SetTransform( 
+            b2Vec2( width-boxDiam, height-boxDiam ), 
+            3*M_PI/4.0 );    
+    groundBody[7]->SetTransform( 
+            b2Vec2( boxDiam, height-boxDiam ), 
+            M_PI/4.0 );    
+}
+
+void World::AddGoals( void ){
+    goals.push_back( new Goal(3,3,Box::size/2) );
+    goals.push_back( new Goal(1,2,Box::size/2) );
+}
+
+void World::AddRobots( int numRobots ){
+    for( int i=0; i<numRobots; i++ )
+        robots.push_back( new Pusher( *this, Box::size ) );
+}
+
+void World::AddBoxes( int numBoxes ){
+    for( int i=0; i<numBoxes; i++ )
+        boxes.push_back( new Box( *this ) );
+}
+
+void World::Step( float timestep ){
+    const int32 velocityIterations = 6;
+    const int32 positionIterations = 2;
+
+    for( int i=0; i<robots.size(); ++i){
+        robots[i]->Update( timestep );
+    }
+    lightCTRL.Update(goals, boxes); 
+
+    // Instruct the world to perform a single step of simulation.
+    // It is generally best to keep the time step and iterations fixed.
+    b2world->Step( timestep, velocityIterations, positionIterations);   
+}
+
+// ===> BOX class methods
+Box::Box( World& world ) :
+    WorldObject(0,0),
+    body(NULL) 
+{
+    b2PolygonShape dynamicBox;
+    dynamicBox.SetAsBox( size/2.0, size/2.0 );
+    b2CircleShape dynamicCircle;
+    dynamicCircle.m_p.Set(0,0);
+    dynamicCircle.m_radius = size/2.0f;
+    
+    b2FixtureDef fixtureDef;
+    fixtureDef.shape = &dynamicCircle;
+    fixtureDef.density = 2.0;
+    fixtureDef.friction = 1.0;
+    fixtureDef.restitution = 0.1;
+    
+    b2BodyDef bodyDef;
+    bodyDef.type = b2_dynamicBody;
+    
+    body = world.b2world->CreateBody(&bodyDef);    
+    body->SetLinearDamping( 10.0 );
+    body->SetAngularDamping( 10.0 );
+    body->SetTransform( b2Vec2( world.width * drand48(), world.height * drand48()), 0 );                
+      
+    body->CreateFixture(&fixtureDef);
+    center = (body->GetWorldCenter());
+}
+
 // ===> ROBOT class methods
 Robot::Robot( World& world, const float x, const float y, const float a ) : 
-  body( NULL ),
-  joint( NULL ) {
+    WorldObject(0,0),
+    body( NULL ),
+    joint( NULL ) 
+{
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
     body = world.b2world->CreateBody(&bodyDef);
@@ -53,6 +170,7 @@ Robot::Robot( World& world, const float x, const float y, const float a ) :
     // place assembled robot in the world
     body->SetTransform( b2Vec2( x, y ), a );	
     bumper->SetTransform( body->GetWorldPoint( b2Vec2( size/2,0) ), a );	
+    center = (body->GetWorldCenter());
 }
 
 bool Robot::GetBumperPressed( void ) {
@@ -67,6 +185,20 @@ void Robot::SetSpeed( float x, float y, float a ) {
 
 // ===> LIGHT CONTROLLER class methods
 // -> PUBLIC
+LightController::LightController( float goalError, float radiusSmall, float radiusLarge ) :
+    goalError(goalError),
+    radiusSmall(radiusSmall),
+    radiusLarge(radiusLarge)
+{
+    lightSmall = RadiusToIntensity( radiusSmall );
+    lightLarge = RadiusToIntensity( radiusLarge );
+}
+
+LightController::~LightController(){
+    for( int i = 0; i < lights.size(); i++)
+        delete lights[i];
+}
+
 float LightController::GetIntensity( float x, float y ){
     // integrate brightness over all light sources
     float brightness = 1.0;
@@ -76,28 +208,104 @@ float LightController::GetIntensity( float x, float y ){
     return brightness;
 }
 
+void LightController::SetGoals( std::vector<Goal*>& goals ){
+    for( int i = 0; i < goals.size(); i++){
+        b2Vec2 goalCenter = goals[i]->GetCenter();
+        lights.push_back( 
+                new Light( goalCenter.x, goalCenter.y) );
+    }
+}
+
 void LightController::Update( 
         const std::vector<Goal*>& goals,
         const std::vector<Box*>& boxes){ 
     for( int i=0; i<std::min(goals.size(),boxes.size()); ++i ){
-        b2Vec2 goal = b2Vec2(goals[i]->x, goals[i]->y);
-        Box* assignedBox = boxes[i]; 
-        b2Vec2 box = (assignedBox->body)->GetWorldCenter();
-        float distBoxToGoal = sqrt(pow(box.x-goal.x,2) + pow(box.y-goal.y,2));
+        b2Vec2 goal = goals[i]->GetCenter();
+        b2Vec2 box = boxes[i]->GetCenter();
+        float distBoxToGoal = boxes[i]->DistanceTo(*goals[i]);
 
         if(distBoxToGoal > goalError){
             float x = (goal.x-box.x)*radiusSmall/distBoxToGoal + box.x;
-            lights[i]->x = x;
-            lights[i]->y = (goal.y-box.y)*(x-box.x)/(goal.x-box.x) + box.y;
+            float y = (goal.y-box.y)*(x-box.x)/(goal.x-box.x) + box.y;
+            lights[i]->SetCenter(x,y);
         } else {
             goals[i]->filled = true;
-            lights[i]->x = goal.x;
-            lights[i]->y = goal.y;
+            lights[i]->SetCenter(goal);
+            std::cout << "[GOAL REACHED]" << std::endl;
         }
-        std::cout << "Goal: (" << goal.x << "," << goal.y << ")" << std::endl;
-        std::cout << "Box: (" << box.x << "," << box.y << ")" << std::endl;
-        std::cout << "Light: (" << lights[i]->x << "," << lights[i]->y << ")" << std::endl; 
+        //goals[i]->WhereAmI();
+        //boxes[i]->WhereAmI();
+        //lights[i]->WhereAmI();
     }
+}
+
+// ===> PUSHER class methods
+Pusher::Pusher( World& world, float epsilon ) : 
+    epsilon(epsilon),
+    Robot( world, 
+        drand48() * (world.width - 2*epsilon) + epsilon,
+        drand48() * (world.height - 2*epsilon) + epsilon, 
+        -M_PI + drand48() * 2.0*M_PI), 
+    state( S_TURN ),
+    timeleft( drand48() * TURNMAX ),
+    speedx( 0 ),
+    speeda( 0 ) 
+{
+    turnRight = drand48() < 0.5 ? 1 : -1; 
+}
+
+void Pusher::Update( float timestep ) {
+    // ===> IMPLEMENT ROBOT BEHAVIOUR WITH A LITTLE STATE MACHINE
+    b2Vec2 here = body->GetWorldCenter();
+    float currentLightIntensity = lightCTRL->GetIntensity(here.x, here.y);
+    // count down to changing control state
+    timeleft -= timestep;
+
+    // force a change of control state
+    if( state == S_PUSH && 
+        (currentLightIntensity < lightCTRL->GetSmallLight() || GetBumperPressed()) ){
+        timeleft = 0.0; // end pushing right now
+        speedx = 0;
+        speeda = 0;
+    }
+
+    if( timeleft <= 0 ) // time to change to another behaviour
+        switch( state ) {
+            case S_PUSH:
+                //std::cout << "In state: BACKUP << std::endl;
+                state = currentLightIntensity < lightCTRL->GetSmallLight() ? 
+                    S_BACKUP_LONG : S_BACKUP_SHORT;
+                timeleft = currentLightIntensity < lightCTRL->GetSmallLight() ?
+                    0 : BACKUP;
+                speedx = -SPEEDX;
+                speeda = 0;           
+                break;
+            case S_BACKUP_LONG: 
+                if( currentLightIntensity > lightCTRL->GetLargeLight() || fabs(timeleft) > 10 * BACKUP )
+                    state = S_BACKUP_SHORT;
+                else if( currentLightIntensity < lightIntensity )
+                    speedx = -speedx;
+                break;
+            case S_BACKUP_SHORT: 
+                //std::cout << "In state: TURN" << std::endl;
+                state = S_TURN;
+                timeleft = drand48() * TURNMAX;
+                speedx = 0;
+                speeda = turnRight * SPEEDA;        
+                break;
+            case S_TURN: 
+                //std::cout << "In state: PUSH" << std::endl;
+                state = S_PUSH;
+                timeleft = PUSH;
+                speedx = SPEEDX;
+                speeda = 0;  
+                break;
+            default:
+                std::cout << "invalid control state: " << state << std::endl;
+                exit(1);
+        }
+    SetSpeed( speedx, 0, speeda );
+    lightIntensity = currentLightIntensity;
 }
 
     // ===> THE FOLLOWING HAS BEEN MOVED TO: gui.cc
