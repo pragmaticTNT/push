@@ -1,7 +1,8 @@
 #include <stdio.h>  // printf
 
-#include <iostream>
 #include <getopt.h> // getopt_long: reading in cmd line args
+#include <iostream>
+#include <string>
 #include <unistd.h> // usleep(3)
 
 #include "push.hh"
@@ -20,20 +21,25 @@ int main( int argc, char* argv[] ){
     float HEIGHT = 5;
     size_t ROBOTS = 16;
     size_t BOXES = 128;
+    std::string goalFile = "goals.txt";
+    char* gValue = NULL;
     float32 timeStep = 1.0 / 30.0;
 
     /* options descriptor */
     static struct option longopts[] = {
+        //  { "width",  optional_argument,   NULL,  'w' },
+        //  { "height",  optional_argument,   NULL,  'h' },
         { "robots",  required_argument,   NULL,  'r' },
         { "boxes",  required_argument,   NULL,  'b' },
         { "robotsize",  required_argument,   NULL,  'z' },
         { "boxsize",  required_argument,   NULL,  's' },
+        //  { "goalFileName",  optional_argument,   NULL,  'g' },
         //	{ "help",  optional_argument,   NULL,  'h' },
         { NULL, 0, NULL, 0 }
     };
 
     int ch=0, optindex=0;  
-    while ((ch = getopt_long(argc, argv, "r:b:s:z:", longopts, &optindex)) != -1) {
+    while ((ch = getopt_long(argc, argv, "w:h:r:b:s:z:g:", longopts, &optindex)) != -1) {
         switch( ch ) {
             case 0: // long option given
                 printf( "option %s given", longopts[optindex].name );
@@ -41,6 +47,10 @@ int main( int argc, char* argv[] ){
                 printf (" with arg %s", optarg);
                 printf ("\n");
                 break;
+            case 'w':
+                WIDTH = atoi( optarg ); break;
+            case 'h':
+                HEIGHT = atoi( optarg ); break;
             case 'r':
                 ROBOTS = atoi( optarg ); break;
             case 'b':
@@ -49,19 +59,20 @@ int main( int argc, char* argv[] ){
                 Robot::size = atof( optarg ); break;
             case 's':
                 Box::size = atof( optarg ); break;
+            case 'g':
+                goalFile = std::string(optarg);
+                break;
                 // case 'h':  
-                // case '?':  
-                //   puts( USAGE );
-                //   exit(0);
-                //   break;
-            default:
-                printf("unhandled option %c\n", ch );
-                //puts( USAGE );
+            case '?':  
+                if( optopt == 'c' )
+                    std::cout << "[ERR] option -c requires an argument\n";
+                else
+                    std::cout << "[ERR] unhandled option: " << ch << std::endl;
                 exit(0);
         }
     }
 
-    GuiWorld world( WIDTH, HEIGHT, Robot::size, ROBOTS, BOXES);
+    GuiWorld world( WIDTH, HEIGHT, Robot::size, ROBOTS, BOXES, goalFile);
     /* Loop until the user closes the window */
     while( !world.RequestShutdown() ) {
         world.Step( timeStep );

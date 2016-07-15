@@ -1,27 +1,29 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 
 #include "push.hh"
 
 // ===> Set Static Variables
-LightController* Robot::lightCTRL;
 float Box::size;
 float Robot::size;
 
 // ===> WORLD class methods
-World::World( float width, float height, float boxDiam, int numRobots, int numBoxes ) :
+World::World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& goalFile ) :
     width(width),
     height(height),
     boxDiam(boxDiam),
-    lightCTRL(LightController( 0.1, 1.0, 1.2 )),
+    lightCTRL(LightController( 0.2, 0.4, 0.5, 0.1 )),
     b2world( new b2World( b2Vec2( 0,0 ))) // gravity 
 {
+    lightAvoidIntensity = 0.2;
+    lightBufferIntensity = 0.4;
     std::cout << "Starting " << width << "x" << height << " World... robots: " << numRobots << " boxes: " << numBoxes << std::endl;
     BuildWalls();
-    AddGoals();
     AddRobots(numRobots);
-    AddBoxes(numBoxes);
-    lightCTRL.SetGoals(goals);
-    Robot::lightCTRL = &lightCTRL;
+    AddBoxes(numBoxes, Box::SHAPE_CIRC);
+    AddGoals(goalFile);
+    lightCTRL.SetGoals(goals, numBoxes);
 }
 
 void World::BuildWalls( void ){
@@ -64,19 +66,38 @@ void World::BuildWalls( void ){
             M_PI/4.0 );    
 }
 
-void World::AddGoals( void ){
-    goals.push_back( new Goal(3,3,Box::size/2) );
-    goals.push_back( new Goal(1,2,Box::size/2) );
+void World::AddGoals( const std::string& fileName ){
+    if( fileName.empty() ){
+        goals.push_back( new Goal(3,3,Box::size/2) );
+        //goals.push_back( new Goal(1,2,Box::size/2) );
+    } else { // read from file
+        std::string goal, x, y;
+        std::ifstream goalFile(fileName.c_str());
+        if( goalFile.is_open() ){
+            while( std::getline(goalFile, goal) ){
+                std::stringstream ss(goal);
+                ss >> x >> y;
+                goals.push_back( new Goal(std::stof(x), std::stof(y), Box::size/2) );
+            }
+            goalFile.close();
+        } else {
+            std::cout << "[ERR] Unable to open file: " << fileName << std::endl;
+        }
+    }
 }
 
-void World::AddRobots( int numRobots ){
+void World::AddRobots( size_t numRobots ){
     for( int i=0; i<numRobots; i++ )
         robots.push_back( new Pusher( *this, Box::size ) );
 }
 
-void World::AddBoxes( int numBoxes ){
+void World::AddBoxes( size_t numBoxes, Box::box_shape_t shape ){
     for( int i=0; i<numBoxes; i++ )
-        boxes.push_back( new Box( *this ) );
+        boxes.push_back( new Box(*this, shape) );
+}
+
+float World::GetLightIntensity( const b2Vec2& here ){
+    return lightCTRL.GetIntensity( here.x, here.y );
 }
 
 void World::Step( float timestep ){
@@ -84,9 +105,9 @@ void World::Step( float timestep ){
     const int32 positionIterations = 2;
 
     for( int i=0; i<robots.size(); ++i){
-        robots[i]->Update( timestep );
+        robots[i]->Update( timestep, *this );
     }
-    lightCTRL.Update(goals, boxes); 
+    lightCTRL.Update(goals, boxes, timestep); 
 
     // Instruct the world to perform a single step of simulation.
     // It is generally best to keep the time step and iterations fixed.
@@ -94,21 +115,43 @@ void World::Step( float timestep ){
 }
 
 // ===> BOX class methods
-Box::Box( World& world ) :
+Box::Box( World& world, box_shape_t shape ) :
     WorldObject(0,0),
     body(NULL) 
 {
-    b2PolygonShape dynamicBox;
-    dynamicBox.SetAsBox( size/2.0, size/2.0 );
-    b2CircleShape dynamicCircle;
-    dynamicCircle.m_p.Set(0,0);
-    dynamicCircle.m_radius = size/2.0f;
-    
     b2FixtureDef fixtureDef;
-    fixtureDef.shape = &dynamicCircle;
+    b2PolygonShape dynamicPolygon;
+    b2CircleShape dynamicCirc;
+
+    switch( shape ){
+        case SHAPE_RECT:
+            dynamicPolygon.SetAsBox( size/2.0, size/2.0 );
+            fixtureDef.shape = &dynamicPolygon;
+            break;
+        case SHAPE_CIRC:
+            dynamicCirc.m_p.Set(0,0);
+            dynamicCirc.m_radius = size/2.0f;
+            fixtureDef.shape = &dynamicCirc;
+            break;
+        case SHAPE_HEX:
+            {
+                b2Vec2 verts[6];
+                for (int i=0; i<6; ++i){
+                    verts[i].x = size/2.0 * cos(2.0*M_PI*i/6.0);
+                    verts[i].y = size/2.0 * sin(2.0*M_PI*i/6.0);
+                }
+                dynamicPolygon.Set(verts, 6);
+                fixtureDef.shape = &dynamicPolygon;
+                break;
+            }
+        default:
+            std::cout << "Invalid shape number " << shape << std::endl;
+            break;
+    }
+
     fixtureDef.density = 2.0;
     fixtureDef.friction = 1.0;
-    fixtureDef.restitution = 0.1;
+    fixtureDef.restitution = 0.1; 
     
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
@@ -185,13 +228,16 @@ void Robot::SetSpeed( float x, float y, float a ) {
 
 // ===> LIGHT CONTROLLER class methods
 // -> PUBLIC
-LightController::LightController( float goalError, float radiusSmall, float radiusLarge ) :
+LightController::LightController( float avoidIntensity, float bufferIntensity, float radiusSmall, float goalError ) :
+    timeElapsed(0),
     goalError(goalError),
+    radiusInit(radiusSmall),
     radiusSmall(radiusSmall),
-    radiusLarge(radiusLarge)
+    avoidIntensity(avoidIntensity),
+    bufferIntensity(bufferIntensity)
 {
-    lightSmall = RadiusToIntensity( radiusSmall );
-    lightLarge = RadiusToIntensity( radiusLarge );
+    scaleFactor = GetScaleFactor(radiusSmall);
+    radiusLarge = GetRadiusLarge();
 }
 
 LightController::~LightController(){
@@ -203,19 +249,22 @@ float LightController::GetIntensity( float x, float y ){
     // integrate brightness over all light sources
     float brightness = 1.0;
     for( std::vector<Light*>::iterator it = lights.begin(); it != lights.end(); ++it ){
-        brightness = std::min(brightness,(*it)->GetIntensity(x,y));
+        b2Vec2 center = (*it)->GetCenter();
+        float light = 1-1.0/(1+scaleFactor*(pow(center.x-x,2)+pow(center.y-y,2)));
+        brightness = std::min(brightness, light);
     }
     return brightness;
 }
 
-void LightController::SetGoals( std::vector<Goal*>& goals ){
-    for( int i = 0; i < goals.size(); i++){
+void LightController::SetGoals( std::vector<Goal*>& goals, size_t numBoxes ){
+    for( int i = 0; i < std::min(goals.size(), numBoxes); ++i){
         b2Vec2 goalCenter = goals[i]->GetCenter();
         lights.push_back( 
                 new Light( goalCenter.x, goalCenter.y) );
     }
 }
 
+// -> Light off-center to the boxes
 void LightController::Update( 
         const std::vector<Goal*>& goals,
         const std::vector<Box*>& boxes){ 
@@ -231,11 +280,41 @@ void LightController::Update(
         } else {
             goals[i]->filled = true;
             lights[i]->SetCenter(goal);
-            std::cout << "[GOAL REACHED]" << std::endl;
+            //std::cout << "[GOAL REACHED]" << std::endl;
         }
         //goals[i]->WhereAmI();
         //boxes[i]->WhereAmI();
         //lights[i]->WhereAmI();
+    }
+}
+
+// -> Light centered at the goal slowly diminishing
+void LightController::Update(
+        const std::vector<Goal*>& goals,
+        const std::vector<Box*>& boxes,
+        float timeStep ){
+    static float maxRadius = 4.0;
+    static float growRate = -10e-4;
+    timeElapsed += timeStep;
+    for( size_t i=0; i<goals.size(); ++i ){
+        if( !goals[i]->filled ){
+            radiusSmall = std::max(radiusInit, maxRadius + growRate*timeElapsed);
+            scaleFactor = GetScaleFactor(radiusSmall);
+            radiusLarge = GetRadiusLarge();
+        }
+    }
+    // std::cout << "Time Elapsed: " << timeElapsed << std::endl;
+    if( radiusInit/maxRadius > maxRadius + growRate*timeElapsed ){
+        timeElapsed = 0;
+        maxRadius *= 0.9;
+        for( size_t g=0; g<goals.size(); ++g ){
+            if( ! goals[g]->filled ){
+                for( size_t b=0; b<boxes.size(); ++b ){ 
+                    if( goals[g]->DistanceTo(*boxes[b]) < goalError )
+                        goals[g]->filled = true;
+                }
+            }
+        }
     }
 }
 
@@ -254,16 +333,19 @@ Pusher::Pusher( World& world, float epsilon ) :
     turnRight = drand48() < 0.5 ? 1 : -1; 
 }
 
-void Pusher::Update( float timestep ) {
+void Pusher::Update( float timestep, World& world ) {
     // ===> IMPLEMENT ROBOT BEHAVIOUR WITH A LITTLE STATE MACHINE
-    b2Vec2 here = body->GetWorldCenter();
-    float currentLightIntensity = lightCTRL->GetIntensity(here.x, here.y);
+    center = (body->GetWorldCenter());
+    float currentLightIntensity = world.GetLightIntensity(center);
+    // std::cout << "Current light intensity: " << currentLightIntensity << std::endl;
+    int backupRatio = 10;
+
     // count down to changing control state
     timeleft -= timestep;
 
     // force a change of control state
     if( state == S_PUSH && 
-        (currentLightIntensity < lightCTRL->GetSmallLight() || GetBumperPressed()) ){
+        (currentLightIntensity < world.lightAvoidIntensity || GetBumperPressed()) ){
         timeleft = 0.0; // end pushing right now
         speedx = 0;
         speeda = 0;
@@ -273,15 +355,15 @@ void Pusher::Update( float timestep ) {
         switch( state ) {
             case S_PUSH:
                 //std::cout << "In state: BACKUP << std::endl;
-                state = currentLightIntensity < lightCTRL->GetSmallLight() ? 
+                state = currentLightIntensity < world.lightAvoidIntensity ? 
                     S_BACKUP_LONG : S_BACKUP_SHORT;
-                timeleft = currentLightIntensity < lightCTRL->GetSmallLight() ?
+                timeleft = currentLightIntensity < world.lightAvoidIntensity ?
                     0 : BACKUP;
                 speedx = -SPEEDX;
                 speeda = 0;           
                 break;
             case S_BACKUP_LONG: 
-                if( currentLightIntensity > lightCTRL->GetLargeLight() || fabs(timeleft) > 10 * BACKUP )
+                if( currentLightIntensity > world.lightBufferIntensity || fabs(timeleft) > backupRatio * BACKUP )
                     state = S_BACKUP_SHORT;
                 else if( currentLightIntensity < lightIntensity )
                     speedx = -speedx;

@@ -3,7 +3,7 @@
 # 	export PKG_CONFIG_PATH=$(PKG_CONFIG_PATH:<path to pkgconfig folder>
 # currently the path is: /home/xyl9/glfw_ws/glfw-3.2/install/lib/pkgconfig
 
-CCFLAGS = -g -O3 `pkg-config --cflags glfw3 box2d`
+CCFLAGS = -std=c++11 -g -O3 `pkg-config --cflags glfw3 box2d`
 LDFLAGS = `pkg-config --static --libs glfw3 box2d` -lGL
 
 # ===> OS 

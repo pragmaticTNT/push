@@ -190,8 +190,8 @@ void GuiWorld::Draw( const std::vector<Goal*>& goals, const float color[3] ){
     }
 }
 
-GuiWorld::GuiWorld( float width, float height, float boxDiam, int numRobots, int numBoxes ) : 
-    World( width, height, boxDiam, numRobots, numBoxes ),
+GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName ) : 
+    World( width, height, boxDiam, numRobots, numBoxes, fileName ),
     window(NULL),
     draw_interval( skip ) {
 
