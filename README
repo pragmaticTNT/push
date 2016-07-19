@@ -1,6 +1,6 @@
 To Run Default type:
 
-make && ./push -w 10 h 10 r -30 -b 11 -z 0.25 -s 0.5 -g k.txt
+make && ./push -w 10 -h 10 -r 30 -b 11 -z 0.25 -s 0.5 -g k.txt
 
 these are respectively:
 w:  width of window
