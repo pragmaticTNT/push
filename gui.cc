@@ -56,40 +56,40 @@ void key_callback( GLFWwindow* window, int key, int scancode, int action, int mo
         }
 }
 
-void GuiWorld::DrawDisk(float cx, float cy, float r ) { 
-    const int num_segments = 32.0 * sqrtf( r );
+void GuiWorld::DrawDisk( Center center, Radius radius ) { 
+    const int num_segments = 32.0 * sqrtf(radius);
     const float theta = 2 * M_PI / float(num_segments); 
-    const float c = cosf(theta);//precalculate the sine and cosine
+    const float c = cosf(theta); 
     const float s = sinf(theta);
     float t;
 
-    float x = r; //we start at angle = 0 
+    float x = radius; //we start at angle = 0 
     float y = 0; 
 
     //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
     glBegin(GL_TRIANGLE_STRIP); 
         for(int ii = 0; ii < num_segments; ii++) { 
-            glVertex2f( x + cx, y + cy);//output vertex 
-            glVertex2f( cx, cy );//output vertex 
+            glVertex2f( x + center.x, y + center.y); 
+            glVertex2f( center.x, center.y ); 
 
             //apply the rotation matrix
             t = x;
             x = c * x - s * y;
             y = s * t + c * y;
         }
-    glVertex2f( r + cx, 0 + cy); // first point again to close disk
+    glVertex2f( radius+center.x, 0+center.y ); // first point again to close disk
     glEnd();
 }
 
-void GuiWorld::DrawCircle(float cx, float cy, float cr) {
-    const int lineAmount = 32.0 * sqrtf(cr);
+void GuiWorld::DrawCircle( Center center, Radius radius) {
+    const int lineAmount = 32.0 * sqrtf(radius);
     float twicePi = M_PI * 2.0f;
 
     glBegin(GL_LINE_LOOP);
         for( int i = 0; i < lineAmount; i++ ){
             glVertex2f(
-                    cx + (cr * cosf(i*twicePi/lineAmount)),
-                    cy + (cr * sinf(i*twicePi/lineAmount))
+                center.x + (radius*cosf(i*twicePi/lineAmount)),
+                center.y + (radius*sinf(i*twicePi/lineAmount))
             );
         }
     glEnd();
@@ -103,7 +103,7 @@ void GuiWorld::DrawBody( b2Body* b, const float color[3] ) {
                 b2CircleShape* circle = (b2CircleShape*)f->GetShape();
                 b2Vec2 position = b->GetWorldCenter();
                 glColor3fv( color );
-                DrawDisk( position.x, position.y, circle->m_radius ); 
+                DrawDisk( position, circle->m_radius ); 
                 }
                 break;
             case b2Shape::e_polygon:
@@ -139,32 +139,31 @@ void GuiWorld::DrawBody( b2Body* b, const float color[3] ) {
     } 
 }
 
-void GuiWorld::Draw( LightController& lightCTRL, const float color[3] ){
+void GuiWorld::Draw( const LightController& lightCTRL, const float color[3] ){
     glColor4f( color[0], color[1], color[2], 0.5 );
-    for( std::vector<Light*>::iterator it = lightCTRL.lights.begin(); it != lightCTRL.lights.end(); it++ ){
-        b2Vec2 light = (*it)->GetCenter();
-        DrawDisk( light.x, light.y, lightCTRL.radiusSmall );
-        DrawDisk( light.x, light.y, lightCTRL.radiusLarge );
+    for( auto light : lightCTRL.lights ){
+        DrawDisk( light->GetCenter(), lightCTRL.radiusSmall );
+        DrawDisk( light->GetCenter(), lightCTRL.radiusLarge );
     }
 }
 
 void GuiWorld::Draw( const std::vector<Box*>& bodies, const float color[3] ){
-    for( int i=0; i<bodies.size(); i++ )
-        DrawBody( bodies[i]->body, color );
+    for( auto box : boxes )
+        DrawBody( box->body, color );
 }
 
 void GuiWorld::Draw( const std::vector<Robot*>& robots, const float color[3] ){
-    for( int i=0; i<robots.size(); i++ ) {
-        DrawBody( robots[i]->body, color );
-        DrawBody( robots[i]->bumper, c_darkred );
+    for( auto robot : robots ) {
+        DrawBody( robot->body, color );
+        DrawBody( robot->bumper, c_darkred );
     }
     // draw a nose on the robot
     glColor3f( 1,1,1 );
     glPointSize( 12 );
     glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
     glBegin( GL_TRIANGLES );
-    for( int i=0; i<robots.size(); i++ ) {      
-        const b2Transform& t = robots[i]->body->GetTransform();
+    for( auto robot : robots ) {      
+        const b2Transform& t = robot->body->GetTransform();
         const float a = t.q.GetAngle();
 
         glVertex2f( t.p.x + Robot::size/2.0 * cos(a),
@@ -178,16 +177,14 @@ void GuiWorld::Draw( const std::vector<Robot*>& robots, const float color[3] ){
 }
 
 void GuiWorld::Draw( const std::vector<b2Body*>& walls, const float color[3] ){
-    for( int i=0; i<walls.size(); i++ )
-        DrawBody( walls[i], color );
+    for( auto wall : walls )
+        DrawBody( wall, color );
 }
 
 void GuiWorld::Draw( const std::vector<Goal*>& goals, const float color[3] ){
     glColor3fv( color );
-    for (int i=0; i<goals.size(); ++i){
-        b2Vec2 goal = goals[i]->GetCenter();
-        DrawCircle(goal.x, goal.y, goals[i]->r);
-    }
+    for( auto goal : goals )
+        DrawCircle( goal->GetCenter(), goal->radius );
 }
 
 GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName ) : 

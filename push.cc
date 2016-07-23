@@ -8,25 +8,37 @@
 float Box::size;
 float Robot::size;
 
+const float Pusher::PUSH = 10.0; // seconds
+const float Pusher::BACKUP = 0.1;
+const float Pusher::TURNMAX = 1.5;
+const float Pusher::SPEEDX = 0.5;
+const float Pusher::SPEEDA = M_PI/2.0;
+const float Pusher::maxspeedx = 0.5;
+const float Pusher::maxspeeda = M_PI/2.0;
+
 // ===> WORLD class methods
-World::World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& goalFile ) :
+World::World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& goalFile, box_shape_t shape ) :
     width(width),
     height(height),
     boxDiam(boxDiam),
-    lightCTRL(LightController( 0.2, 0.4, 0.5, 0.1 )),
+    spawnDist(Box::size),
+    lightCTRL(LightController()),
     b2world( new b2World( b2Vec2( 0,0 ))) // gravity 
 {
+    // Lets get these from the goal file does that make any sense? What do those parameters have to do with the goal... hum... will have to decide at some point...
+    // TODO: Figure out where we are setting these
     lightAvoidIntensity = 0.2;
     lightBufferIntensity = 0.4;
+
     std::cout << "Starting " << width << "x" << height << " World... robots: " << numRobots << " boxes: " << numBoxes << std::endl;
-    BuildWalls();
+    AddBoundary();
     AddRobots(numRobots);
-    AddBoxes(numBoxes, Box::SHAPE_CIRC);
+    AddBoxes(numBoxes, shape);
     AddGoals(goalFile);
-    lightCTRL.SetGoals(goals, numBoxes);
+    lightCTRL.SetGoals(goals);
 }
 
-void World::BuildWalls( void ){
+void World::AddBoundary( void ){
     b2BodyDef groundBodyDef;
     groundBodyDef.type = b2_staticBody;
     b2PolygonShape groundBox;
@@ -40,6 +52,7 @@ void World::BuildWalls( void ){
     }
     
     // -> Sets the wall arrangements
+    // TODO: set a proper octagonal boundary and "line" solution
     groundBody[0]->SetTransform( 
             b2Vec2( width/2, 0 ), 
             0 );    
@@ -64,20 +77,40 @@ void World::BuildWalls( void ){
     groundBody[7]->SetTransform( 
             b2Vec2( boxDiam, height-boxDiam ), 
             M_PI/4.0 );    
+    // TODO: set the no spawn boundary property based on wall size
+    // spawnDist = 0; // Do some calculations
+}
+
+void World::AddRobots( size_t numRobots ){
+    for( int i=0; i<numRobots; i++ )
+        robots.push_back( new Pusher( *this, spawnDist ) );
+}
+
+void World::AddBoxes( size_t numBoxes, box_shape_t shape ){
+    for( int i=0; i<numBoxes; i++ )
+        boxes.push_back( new Box(*this, spawnDist, shape) );
 }
 
 void World::AddGoals( const std::string& fileName ){
-    if( fileName.empty() ){
+    if( fileName.empty() ){ // DEFAULT
+        std::cout << "[WARNING] No file name given. Using DEFAULT.";
         goals.push_back( new Goal(3,3,Box::size/2) );
-        //goals.push_back( new Goal(1,2,Box::size/2) );
-    } else { // read from file
+    } else {                // READ FROM FILE
         std::string goal, x, y;
         std::ifstream goalFile(fileName.c_str());
         if( goalFile.is_open() ){
-            while( std::getline(goalFile, goal) ){
+            // TODO: implent the first line setup stuff
+            // Lines preceeded by "#" are comments
+            // First non-comment line is setup:
+            //  -box size
+            //  -avoid intensity
+            //  -buffer intensity
+            //  -small light radius
+            while( std::getline(goalFile, goal)){
                 std::stringstream ss(goal);
                 ss >> x >> y;
-                goals.push_back( new Goal(std::stof(x), std::stof(y), Box::size/2) );
+                if( x.at(0) != '#' )
+                    goals.push_back( new Goal(std::stof(x), std::stof(y), Box::size/2) );
             }
             goalFile.close();
         } else {
@@ -86,17 +119,7 @@ void World::AddGoals( const std::string& fileName ){
     }
 }
 
-void World::AddRobots( size_t numRobots ){
-    for( int i=0; i<numRobots; i++ )
-        robots.push_back( new Pusher( *this, Box::size ) );
-}
-
-void World::AddBoxes( size_t numBoxes, Box::box_shape_t shape ){
-    for( int i=0; i<numBoxes; i++ )
-        boxes.push_back( new Box(*this, shape) );
-}
-
-float World::GetLightIntensity( const b2Vec2& here ){
+float World::GetLightIntensity( const Center& here ){
     return lightCTRL.GetIntensity( here.x, here.y );
 }
 
@@ -114,8 +137,9 @@ void World::Step( float timestep ){
     b2world->Step( timestep, velocityIterations, positionIterations);   
 }
 
+
 // ===> BOX class methods
-Box::Box( World& world, box_shape_t shape ) :
+Box::Box( World& world, Epsilon spawnDist, box_shape_t shape ) :
     WorldObject(0,0),
     body(NULL) 
 {
@@ -159,14 +183,15 @@ Box::Box( World& world, box_shape_t shape ) :
     body = world.b2world->CreateBody(&bodyDef);    
     body->SetLinearDamping( 10.0 );
     body->SetAngularDamping( 10.0 );
-    body->SetTransform( b2Vec2( world.width * drand48(), world.height * drand48()), 0 );                
+    body->SetTransform( b2Vec2( drand48()*(world.width-2*spawnDist) + spawnDist, drand48()*(world.height-2*spawnDist) + spawnDist ), 0 ); 
       
     body->CreateFixture(&fixtureDef);
     center = (body->GetWorldCenter());
 }
 
+
 // ===> ROBOT class methods
-Robot::Robot( World& world, const float x, const float y, const float a ) : 
+Robot::Robot( World& world, XCoord x, YCoord y, Angle angle ) : 
     WorldObject(0,0),
     body( NULL ),
     joint( NULL ) 
@@ -191,10 +216,11 @@ Robot::Robot( World& world, const float x, const float y, const float a ) :
 
     b2PrismaticJointDef jointDef;
 
-    jointDef.Initialize( body, 
-            bumper, 
-            body->GetWorldCenter(), 
-            b2Vec2( 1.0f, 0.0f )
+    jointDef.Initialize( 
+        body, 
+        bumper, 
+        body->GetWorldCenter(), 
+        b2Vec2( 1.0f, 0.0f )
     ); 
 
     jointDef.lowerTranslation = 0;//-0.2;
@@ -211,56 +237,52 @@ Robot::Robot( World& world, const float x, const float y, const float a ) :
     joint = (b2PrismaticJoint*)world.b2world->CreateJoint( &jointDef );
 
     // place assembled robot in the world
-    body->SetTransform( b2Vec2( x, y ), a );	
-    bumper->SetTransform( body->GetWorldPoint( b2Vec2( size/2,0) ), a );	
-    center = (body->GetWorldCenter());
+    body->SetTransform( b2Vec2( x, y ), angle );	
+    bumper->SetTransform( body->GetWorldPoint( b2Vec2( size/2,0) ), angle );	
+    GetCenter();
 }
 
-bool Robot::GetBumperPressed( void ) {
-    return( joint->GetJointTranslation() < 0.01 );
+bool Robot::isBumperPressed( void ) {
+    return joint->GetJointTranslation() < 0.01;
 }
 
 // set body speed in body-local coordinate frame
-void Robot::SetSpeed( float x, float y, float a ) {  
-    body->SetLinearVelocity( body->GetWorldVector(b2Vec2( x, y )));
-    body->SetAngularVelocity( a );
+void Robot::SetSpeed( XCoord x, YCoord y, Angle angle ) {  
+    body->SetLinearVelocity( body->GetWorldVector(b2Vec2(x,y)) );
+    body->SetAngularVelocity( angle );
 }
+
 
 // ===> LIGHT CONTROLLER class methods
 // -> PUBLIC
-LightController::LightController( float avoidIntensity, float bufferIntensity, float radiusSmall, float goalError ) :
+LightController::LightController( Intensity avoidIntensity, Intensity bufferIntensity, Radius radiusSmall, Epsilon goalError ) :
     timeElapsed(0),
     goalError(goalError),
     radiusInit(radiusSmall),
     radiusSmall(radiusSmall),
     avoidIntensity(avoidIntensity),
-    bufferIntensity(bufferIntensity)
-{
-    scaleFactor = GetScaleFactor(radiusSmall);
-    radiusLarge = GetRadiusLarge();
-}
+    bufferIntensity(bufferIntensity),
+    scaleFactor(GetScaleFactor(radiusSmall)),
+    radiusLarge(GetRadiusLarge()){}
 
 LightController::~LightController(){
-    for( int i = 0; i < lights.size(); i++)
-        delete lights[i];
+    for( auto light : lights )
+        delete light;
 }
 
-float LightController::GetIntensity( float x, float y ){
-    // integrate brightness over all light sources
+float LightController::GetIntensity( XCoord x, YCoord y ){
     float brightness = 1.0;
-    for( std::vector<Light*>::iterator it = lights.begin(); it != lights.end(); ++it ){
-        b2Vec2 center = (*it)->GetCenter();
-        float light = 1-1.0/(1+scaleFactor*(pow(center.x-x,2)+pow(center.y-y,2)));
-        brightness = std::min(brightness, light);
+    for( auto light : lights ){
+        float intensity = 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
+        brightness = std::min(brightness, intensity);
+        //brightness *= 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
     }
     return brightness;
 }
 
-void LightController::SetGoals( std::vector<Goal*>& goals, size_t numBoxes ){
-    for( int i = 0; i < std::min(goals.size(), numBoxes); ++i){
-        b2Vec2 goalCenter = goals[i]->GetCenter();
-        lights.push_back( 
-                new Light( goalCenter.x, goalCenter.y) );
+void LightController::SetGoals( const std::vector<Goal*>& goals ){
+    for( auto goal : goals ){
+        lights.push_back( new Light(goal->GetCenter()) );
     }
 }
 
@@ -271,7 +293,7 @@ void LightController::Update(
     for( int i=0; i<std::min(goals.size(),boxes.size()); ++i ){
         b2Vec2 goal = goals[i]->GetCenter();
         b2Vec2 box = boxes[i]->GetCenter();
-        float distBoxToGoal = boxes[i]->DistanceTo(*goals[i]);
+        float distBoxToGoal = sqrt(boxes[i]->SqrDistanceTo(*goals[i]));
 
         if(distBoxToGoal > goalError){
             float x = (goal.x-box.x)*radiusSmall/distBoxToGoal + box.x;
@@ -288,6 +310,7 @@ void LightController::Update(
     }
 }
 
+// TODO: implement proper behaviour
 // -> Light centered at the goal slowly diminishing
 void LightController::Update(
         const std::vector<Goal*>& goals,
@@ -310,7 +333,7 @@ void LightController::Update(
         for( size_t g=0; g<goals.size(); ++g ){
             if( ! goals[g]->filled ){
                 for( size_t b=0; b<boxes.size(); ++b ){ 
-                    if( goals[g]->DistanceTo(*boxes[b]) < goalError )
+                    if( sqrt(goals[g]->SqrDistanceTo(*boxes[b])) < goalError )
                         goals[g]->filled = true;
                 }
             }
@@ -318,34 +341,32 @@ void LightController::Update(
     }
 }
 
+
 // ===> PUSHER class methods
-Pusher::Pusher( World& world, float epsilon ) : 
-    epsilon(epsilon),
+Pusher::Pusher( World& world, float spawnDist ) : 
     Robot( world, 
-        drand48() * (world.width - 2*epsilon) + epsilon,
-        drand48() * (world.height - 2*epsilon) + epsilon, 
+        drand48() * (world.width-2*spawnDist) + spawnDist,
+        drand48() * (world.height-2*spawnDist) + spawnDist, 
         -M_PI + drand48() * 2.0*M_PI), 
     state( S_TURN ),
     timeleft( drand48() * TURNMAX ),
     speedx( 0 ),
-    speeda( 0 ) 
-{
-    turnRight = drand48() < 0.5 ? 1 : -1; 
-}
+    speeda( 0 ),
+    turnRight(drand48() < 0.5 ? 1 : -1){}
 
 void Pusher::Update( float timestep, World& world ) {
-    // ===> IMPLEMENT ROBOT BEHAVIOUR WITH A LITTLE STATE MACHINE
-    center = (body->GetWorldCenter());
+    // ===> IMPLEMENT ROBOT BEHAVIOUR WITH A STATE MACHINE
+    center = GetCenter();
     float currentLightIntensity = world.GetLightIntensity(center);
     // std::cout << "Current light intensity: " << currentLightIntensity << std::endl;
-    int backupRatio = 10;
+    int backupRatio = 10;   // How much to backup
 
     // count down to changing control state
     timeleft -= timestep;
 
     // force a change of control state
     if( state == S_PUSH && 
-        (currentLightIntensity < world.lightAvoidIntensity || GetBumperPressed()) ){
+        (currentLightIntensity < world.lightAvoidIntensity || isBumperPressed()) ){
         timeleft = 0.0; // end pushing right now
         speedx = 0;
         speeda = 0;
