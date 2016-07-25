@@ -7,7 +7,10 @@
 // ===> Set Static Variables
 float Box::size;
 float Robot::size;
+float Light::radiusSmall;
+float Light::radiusLarge;
 
+// ===> PUSHER class static variables
 const float Pusher::PUSH = 10.0; // seconds
 const float Pusher::BACKUP = 0.1;
 const float Pusher::TURNMAX = 1.5;
@@ -15,6 +18,104 @@ const float Pusher::SPEEDX = 0.5;
 const float Pusher::SPEEDA = M_PI/2.0;
 const float Pusher::maxspeedx = 0.5;
 const float Pusher::maxspeeda = M_PI/2.0;
+
+// ===> COLORS
+const float c_yellow[3]     = {1.0, 1.0, 0.0};
+const float c_light[3]      = {0.8, 0.8, 0.8};
+const float c_red[3]        = {1.0, 0.0, 0.0};
+const float c_blue[3]       = {0.0, 1.0, 0.0};
+const float c_green[3]      = {0.0, 0.0, 1.0};
+const float c_darkred[3]    = {0.8, 0.0, 0.0};
+const float c_tan[3]        = {0.8, 0.6, 0.5};
+const float c_gray[3]       = {0.9, 0.9, 1.0};
+const float c_black[3]      = {0.0, 0.0, 0.0};
+
+
+// ===> WORLDOBJECT class methods
+void WorldObject::DrawDisk( b2Vec2 center, float radius ) { 
+    const int num_segments = 32.0 * sqrtf(radius);
+    const float theta = 2 * M_PI / float(num_segments); 
+    const float c = cosf(theta); 
+    const float s = sinf(theta);
+    float t;
+
+    float x = radius; //we start at angle = 0 
+    float y = 0; 
+
+    //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+    glBegin(GL_TRIANGLE_STRIP); 
+        for(int ii = 0; ii < num_segments; ii++) { 
+            glVertex2f( x + center.x, y + center.y); 
+            glVertex2f( center.x, center.y ); 
+
+            //apply the rotation matrix
+            t = x;
+            x = c * x - s * y;
+            y = s * t + c * y;
+        }
+    glVertex2f( radius+center.x, 0+center.y ); // first point again to close disk
+    glEnd();
+}
+
+void WorldObject::DrawCircle( b2Vec2 center, float radius) {
+    const int lineAmount = 32.0 * sqrtf(radius);
+    float twicePi = M_PI * 2.0f;
+
+    glBegin(GL_LINE_LOOP);
+        for( int i = 0; i < lineAmount; i++ ){
+            glVertex2f(
+                center.x + (radius*cosf(i*twicePi/lineAmount)),
+                center.y + (radius*sinf(i*twicePi/lineAmount))
+            );
+        }
+    glEnd();
+}
+
+void WorldObject::DrawBody( b2Body* b, const float color[3] ) {
+    for (b2Fixture* f = b->GetFixtureList(); f; f = f->GetNext()){
+        switch( f->GetType() ){
+            case b2Shape::e_circle:
+                {
+                b2CircleShape* circle = (b2CircleShape*)f->GetShape();
+                b2Vec2 position = b->GetWorldCenter();
+                glColor3fv( color );
+                DrawDisk( position, circle->m_radius ); 
+                }
+                break;
+            case b2Shape::e_polygon:
+                {
+                b2PolygonShape* poly = (b2PolygonShape*)f->GetShape();
+                const int count = poly->GetVertexCount();
+
+                glColor3fv( color );
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL );
+                glBegin( GL_POLYGON );	
+                for( int i = 0; i < count; i++ ){
+                    const b2Vec2 w = b->GetWorldPoint( poly->GetVertex( i ));		
+                    glVertex2f( w.x, w.y );
+                }
+                glEnd();		  
+
+                glLineWidth( 3.0 );
+                // glColor3f( color[0]/5, color[1]/5, color[2]/5 );
+                // // TODO: this line in particular is related to the circles not being properly filled in... I wonder why
+                // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                // glBegin( GL_POLYGON );	
+                // for( int i = 0; i < count; i++ ){
+                //     const b2Vec2& v = poly->GetVertex( i );		 
+                //     const b2Vec2 w = b->GetWorldPoint( v );		 
+                //     glVertex2f( w.x, w.y );
+                // }
+                // glEnd();		  
+                }
+                break;
+            default:
+                break;
+        }
+    } 
+}
+// ===> END WORLDOBJECT class methods
+
 
 // ===> WORLD class methods
 World::World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& goalFile, box_shape_t shape ) :
@@ -25,7 +126,7 @@ World::World( float width, float height, float boxDiam, size_t numRobots, size_t
     lightCTRL(LightController()),
     b2world( new b2World( b2Vec2( 0,0 ))) // gravity 
 {
-    // Lets get these from the goal file does that make any sense? What do those parameters have to do with the goal... hum... will have to decide at some point...
+    // Lets get these from the goal file does that make any sense? What do those parameters have to do with the goal... hum... will have to decide at some point... no... like the box shapes I think we are going to pass these parameters in from the main.
     // TODO: Figure out where we are setting these
     lightAvoidIntensity = 0.2;
     lightBufferIntensity = 0.4;
@@ -44,39 +145,30 @@ void World::AddBoundary( void ){
     b2PolygonShape groundBox;
     groundBox.SetAsBox( width/2.0, 0.05f );    
     
-    int walls = 8;
-    for( int i = 0; i < walls; i++ ) {
-        b2Body* wall = b2world->CreateBody(&groundBodyDef); 
-        wall->CreateFixture(&groundBox, 0.05f); // Second parameter is density
-        groundBody.push_back(wall);
+    // -> Sets the wall arrangements
+    // Elements of b2Vec3 cooresponds to:
+    // x: center x coordinate
+    // y: center y coordinate
+    // z: angle
+
+    // TODO: set a proper octagonal boundary and "line" solution/
+    std::vector<b2Vec3> boundary = {
+        b2Vec3( width/2, 0, 0 ),
+        b2Vec3( width/2, height, 0 ), 
+        b2Vec3( 0, height/2, M_PI/2.0 ), 
+        b2Vec3( width, height/2, M_PI/2.0 ), 
+        b2Vec3( boxDiam, boxDiam, 3*M_PI/4.0 ), 
+        b2Vec3( width-boxDiam, boxDiam, M_PI/4.0 ), 
+        b2Vec3( width-boxDiam, height-boxDiam, 3*M_PI/4.0 ), 
+        b2Vec3( boxDiam, height-boxDiam, M_PI/4.0 ) 
+    };
+
+    for( b2Vec3 wall : boundary ){
+        b2Body* wallBody = b2world->CreateBody(&groundBodyDef); 
+        wallBody->CreateFixture(&groundBox, 0.05f); // Param2 is density
+        groundBody.push_back( new Wall(wallBody, wall) );
     }
     
-    // -> Sets the wall arrangements
-    // TODO: set a proper octagonal boundary and "line" solution
-    groundBody[0]->SetTransform( 
-            b2Vec2( width/2, 0 ), 
-            0 );    
-    groundBody[1]->SetTransform( 
-            b2Vec2( width/2, height ), 
-            0 );    
-    groundBody[2]->SetTransform( 
-            b2Vec2( 0, height/2 ), 
-            M_PI/2.0 );    
-    groundBody[3]->SetTransform( 
-            b2Vec2( width, height/2 ), 
-            M_PI/2.0 );    
-    groundBody[4]->SetTransform( 
-            b2Vec2( boxDiam, boxDiam ), 
-            3*M_PI/4.0 );    
-    groundBody[5]->SetTransform( 
-            b2Vec2( width-boxDiam, boxDiam ), 
-            M_PI/4.0 );    
-    groundBody[6]->SetTransform( 
-            b2Vec2( width-boxDiam, height-boxDiam ), 
-            3*M_PI/4.0 );    
-    groundBody[7]->SetTransform( 
-            b2Vec2( boxDiam, height-boxDiam ), 
-            M_PI/4.0 );    
     // TODO: set the no spawn boundary property based on wall size
     // spawnDist = 0; // Do some calculations
 }
@@ -119,7 +211,18 @@ void World::AddGoals( const std::string& fileName ){
     }
 }
 
-float World::GetLightIntensity( const Center& here ){
+World::~World(){
+    for( auto goal : goals )
+        delete goal;
+    for( auto box : boxes )
+        delete box;
+    for( auto robot : robots )
+        delete robot;
+    for( auto wall : groundBody )
+        delete wall;
+}
+
+float World::GetLightIntensity( const b2Vec2& here ){
     return lightCTRL.GetIntensity( here.x, here.y );
 }
 
@@ -136,10 +239,37 @@ void World::Step( float timestep ){
     // It is generally best to keep the time step and iterations fixed.
     b2world->Step( timestep, velocityIterations, positionIterations);   
 }
+// ===> END WORLD class methods
+
+
+// ===> WALL class methods
+Wall::Wall( b2Body* body, b2Vec3& dim ) :
+    WorldObject(dim.x, dim.y),
+    body(body)
+{
+    if (body){
+        body->SetTransform( b2Vec2( dim.x, dim.y ), dim.z );
+    } else {
+        std::cout << "[ERR] WALL: body parameter is NULL.";
+    }
+}
+
+void Wall::Draw( void ){
+    DrawBody( body, c_black );
+}
+// ===> END WALL class methods
+
+
+// ===> GOAL class methods
+void Goal::Draw( void ){
+    glColor3fv( c_green );
+    DrawCircle( GetCenter(), radius );
+}
+// ===> END GOAL class methods
 
 
 // ===> BOX class methods
-Box::Box( World& world, Epsilon spawnDist, box_shape_t shape ) :
+Box::Box( World& world, float spawnDist, box_shape_t shape ) :
     WorldObject(0,0),
     body(NULL) 
 {
@@ -189,9 +319,23 @@ Box::Box( World& world, Epsilon spawnDist, box_shape_t shape ) :
     center = (body->GetWorldCenter());
 }
 
+void Box::Draw( void ){
+    DrawBody( body, c_gray );
+}
+// ===> END BOX class methods
+
+
+// ===> LIGHT class methods
+void Light::Draw( void ){
+    glColor4f( c_light[0], c_light[1], c_light[2], 0.5 );
+    DrawDisk( GetCenter(), radiusSmall );
+    DrawDisk( GetCenter(), radiusLarge );
+}
+// ===> END LIGHT class methods
+
 
 // ===> ROBOT class methods
-Robot::Robot( World& world, XCoord x, YCoord y, Angle angle ) : 
+Robot::Robot( World& world, float x, float y, float angle ) : 
     WorldObject(0,0),
     body( NULL ),
     joint( NULL ) 
@@ -247,99 +391,33 @@ bool Robot::isBumperPressed( void ) {
 }
 
 // set body speed in body-local coordinate frame
-void Robot::SetSpeed( XCoord x, YCoord y, Angle angle ) {  
+void Robot::SetSpeed( float x, float y, float angle ) {  
     body->SetLinearVelocity( body->GetWorldVector(b2Vec2(x,y)) );
     body->SetAngularVelocity( angle );
 }
 
+void Robot::Draw( void ){
+    DrawBody( body, c_red );
+    DrawBody( bumper, c_darkred );
 
-// ===> LIGHT CONTROLLER class methods
-// -> PUBLIC
-LightController::LightController( Intensity avoidIntensity, Intensity bufferIntensity, Radius radiusSmall, Epsilon goalError ) :
-    timeElapsed(0),
-    goalError(goalError),
-    radiusInit(radiusSmall),
-    radiusSmall(radiusSmall),
-    avoidIntensity(avoidIntensity),
-    bufferIntensity(bufferIntensity),
-    scaleFactor(GetScaleFactor(radiusSmall)),
-    radiusLarge(GetRadiusLarge()){}
+    // draw a nose on the robot
+    glColor3f( 1,1,1 );
+    glPointSize( 12 );
+    glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 
-LightController::~LightController(){
-    for( auto light : lights )
-        delete light;
+    glBegin( GL_TRIANGLES );
+        const b2Transform& t = body->GetTransform();
+        const float a = t.q.GetAngle();
+
+        glVertex2f( t.p.x + Robot::size/2.0 * cos(a),
+          t.p.y + Robot::size/2.0 * sin(a) );		  
+        glVertex2f( t.p.x + Robot::size/3.0 * cos(a+0.5),
+          t.p.y + Robot::size/3.0 * sin(a+0.5) );		  
+        glVertex2f( t.p.x + Robot::size/3.0 * cos(a-0.5),
+          t.p.y + Robot::size/3.0 * sin(a-0.5) );		  
+    glEnd();
 }
-
-float LightController::GetIntensity( XCoord x, YCoord y ){
-    float brightness = 1.0;
-    for( auto light : lights ){
-        float intensity = 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
-        brightness = std::min(brightness, intensity);
-        //brightness *= 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
-    }
-    return brightness;
-}
-
-void LightController::SetGoals( const std::vector<Goal*>& goals ){
-    for( auto goal : goals ){
-        lights.push_back( new Light(goal->GetCenter()) );
-    }
-}
-
-// -> Light off-center to the boxes
-void LightController::Update( 
-        const std::vector<Goal*>& goals,
-        const std::vector<Box*>& boxes){ 
-    for( int i=0; i<std::min(goals.size(),boxes.size()); ++i ){
-        b2Vec2 goal = goals[i]->GetCenter();
-        b2Vec2 box = boxes[i]->GetCenter();
-        float distBoxToGoal = sqrt(boxes[i]->SqrDistanceTo(*goals[i]));
-
-        if(distBoxToGoal > goalError){
-            float x = (goal.x-box.x)*radiusSmall/distBoxToGoal + box.x;
-            float y = (goal.y-box.y)*(x-box.x)/(goal.x-box.x) + box.y;
-            lights[i]->SetCenter(x,y);
-        } else {
-            goals[i]->filled = true;
-            lights[i]->SetCenter(goal);
-            //std::cout << "[GOAL REACHED]" << std::endl;
-        }
-        //goals[i]->WhereAmI();
-        //boxes[i]->WhereAmI();
-        //lights[i]->WhereAmI();
-    }
-}
-
-// TODO: implement proper behaviour
-// -> Light centered at the goal slowly diminishing
-void LightController::Update(
-        const std::vector<Goal*>& goals,
-        const std::vector<Box*>& boxes,
-        float timeStep ){
-    static float maxRadius = 4.0;
-    static float growRate = -10e-4;
-    timeElapsed += timeStep;
-    for( size_t i=0; i<goals.size(); ++i ){
-        if( !goals[i]->filled ){
-            radiusSmall = std::max(radiusInit, maxRadius + growRate*timeElapsed);
-            scaleFactor = GetScaleFactor(radiusSmall);
-            radiusLarge = GetRadiusLarge();
-        }
-    }
-    // std::cout << "Time Elapsed: " << timeElapsed << std::endl;
-    if( radiusInit/maxRadius > maxRadius + growRate*timeElapsed ){
-        timeElapsed = 0;
-        maxRadius *= 0.9;
-        for( size_t g=0; g<goals.size(); ++g ){
-            if( ! goals[g]->filled ){
-                for( size_t b=0; b<boxes.size(); ++b ){ 
-                    if( sqrt(goals[g]->SqrDistanceTo(*boxes[b])) < goalError )
-                        goals[g]->filled = true;
-                }
-            }
-        }
-    }
-}
+// ===> END ROBOT class methods
 
 
 // ===> PUSHER class methods
@@ -410,257 +488,99 @@ void Pusher::Update( float timestep, World& world ) {
     SetSpeed( speedx, 0, speeda );
     lightIntensity = currentLightIntensity;
 }
+// ===> END PUSHER class methods
 
-    // ===> THE FOLLOWING HAS BEEN MOVED TO: gui.cc
-    //
-    // const float c_yellow[3] = {1.0, 1.0, 0.0 };
-    // const float c_red[3] = {1.0, 0.0, 0.0 };
-    // const float c_darkred[3] = {0.8, 0.0, 0.0 };
-    // const float c_tan[3] = { 0.8, 0.6, 0.5};
-    // const float c_gray[3] = { 0.9, 0.9, 1.0 };
-    // 
-    // bool GuiWorld::paused = true;
-    // bool GuiWorld::step = false;
-    // int GuiWorld::skip = 1;
 
-    // void checkmouse( GLFWwindow* win, double x, double y) 
-    // {
-    //   //std::cout << x << ' ' << y << std::endl;
-    //   mousex = x/10.0;
-    //   mousey = -y/10.0;
-    // }
+// ===> LIGHT CONTROLLER class methods
+LightController::LightController( float avoidIntensity, float bufferIntensity, float radiusSmall, float goalError ) :
+    timeElapsed(0),
+    goalError(goalError),
+    radiusInit(radiusSmall),
+    radiusSmall(radiusSmall),
+    avoidIntensity(avoidIntensity),
+    bufferIntensity(bufferIntensity),
+    scaleFactor(GetScaleFactor(radiusSmall)),
+    radiusLarge(GetRadiusLarge())
+{
+    Light::radiusSmall = radiusSmall;
+    Light::radiusLarge = radiusLarge;
+}
 
-    // void key_callback( GLFWwindow* window, 
-    // 		   int key, int scancode, int action, int mods)
-    // {
-    //   if(action == GLFW_PRESS)
-    //     switch( key )
-    //       {
-    //       case GLFW_KEY_SPACE:
-    // 	GuiWorld::paused = !GuiWorld::paused;
-    // 	break;
-    // 
-    //       case GLFW_KEY_S:	
-    // 	GuiWorld::paused = true;
-    // 	GuiWorld::step = true; //!GuiWorld::step;
-    // 	break;
-    // 
-    //       case GLFW_KEY_LEFT_BRACKET:
-    // 	if( mods & GLFW_MOD_SHIFT )
-    // 	  GuiWorld::skip = 0;
-    // 	else
-    // 	  GuiWorld::skip  = std::max( 0, --GuiWorld::skip );
-    // 	break;
-    //       case GLFW_KEY_RIGHT_BRACKET:
-    // 	if( mods & GLFW_MOD_SHIFT )
-    // 	  GuiWorld::skip = 500;
-    // 	else
-    // 	  GuiWorld::skip++;
-    // 	break;
-    //       default:
-    // 	break;
-    //       }
-    // }
-    // 
-    // 
-    // void DrawBody( b2Body* b, const float color[3] )
-    // {
-    //   for (b2Fixture* f = b->GetFixtureList(); f; f = f->GetNext()) 
-    //     {
-    //       switch( f->GetType() )
-    // 	{
-    // 	case b2Shape::e_circle:
-    // 	  {
-    // 	    b2CircleShape* circle = (b2CircleShape*)f->GetShape();
-    // 	  }
-    // 	  break;
-    // 	case b2Shape::e_polygon:
-    // 	  {
-    // 	    b2PolygonShape* poly = (b2PolygonShape*)f->GetShape();
-    // 	    
-    // 	    const int count = poly->GetVertexCount();
-    // 	    
-    // 	    glColor3fv( color );
-    // 	    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL );
-    // 	    glBegin( GL_POLYGON );	
-    // 	    
-    // 	    for( int i = 0; i < count; i++ )
-    // 	      {
-    // 		const b2Vec2 w = b->GetWorldPoint( poly->GetVertex( i ));		
-    // 		glVertex2f( w.x, w.y );
-    // 	      }
-    // 	    glEnd();		  
-    // 	    
-    // 	    glLineWidth( 2.0 );
-    // 	    glColor3f( color[0]/5, color[1]/5, color[2]/5 );
-    // 	    //glColor3fv( color );
-    // 	    //glColor3f( 0,0,0 );
-    // 	    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    // 	    glBegin( GL_POLYGON );	
-    // 	    
-    // 	    for( int i = 0; i < count; i++ )
-    // 	       {
-    // 		 const b2Vec2& v = poly->GetVertex( i );		 
-    // 	         const b2Vec2 w = b->GetWorldPoint( v );		 
-    // 	         glVertex2f( w.x, w.y );
-    // 	       }
-    // 	    glEnd();		  
-    // 	  }
-    // 	  break;
-    // 	default:
-    // 	  break;
-    // 	} 
-    //     }
-    // }
-    // 
-    // 
-    // void DrawDisk(float cx, float cy, float r ) 
-    // { 
-    //   const int num_segments = 32.0 * sqrtf( r );
-    //   
-    //   const float theta = 2 * M_PI / float(num_segments); 
-    //   const float c = cosf(theta);//precalculate the sine and cosine
-    //   const float s = sinf(theta);
-    //   float t;
-    //   
-    //   float x = r; //we start at angle = 0 
-    //   float y = 0; 
-    //   
-    //   //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-    //   glBegin(GL_TRIANGLE_STRIP); 
-    //   for(int ii = 0; ii < num_segments; ii++) 
-    //     { 
-    //       glVertex2f( x + cx, y + cy);//output vertex 
-    //       glVertex2f( cx, cy );//output vertex 
-    //       
-    //       //apply the rotation matrix
-    //       t = x;
-    //       x = c * x - s * y;
-    //       y = s * t + c * y;
-    //     } 
-    // 
-    //   glVertex2f( r + cx, 0 + cy); // first point again to close disk
-    // 
-    //   glEnd(); 
-    // }
+LightController::~LightController(){
+    for( auto light : lights )
+        delete light;
+}
 
-    // GuiWorld::GuiWorld( float width, float height ) :
-    //   World( width, height ),
-    //   window(NULL),
-    //   draw_interval( skip )
-    //   {
-    //     srand48( time(NULL) );  
-    // 
-    //     /* Initialize the gui library */
-    //     if (!glfwInit())
-    //       {
-    // 	std::cout << "Failed glfwInit()" << std::endl;
-    // 	exit(1);
-    //       }
-    //   
-    //     /* Create a windowed mode window and its OpenGL context */
-    //     window = glfwCreateWindow(800, 800, "S3", NULL, NULL);
-    //     if (!window)
-    //       {
-    // 	glfwTerminate();
-    // 	exit(2);
-    //       }
-    //   
-    //     /* Make the window's context current */
-    //     glfwMakeContextCurrent(window);
-    //     
-    //     glEnable (GL_BLEND);
-    //     glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    //     
-    //     // scale the drawing to fit the whole world in the window, origin
-    //     // at bottom left
-    //     glScalef( 2.0 / width, 2.0 / height, 1.0 );
-    //     glTranslatef( -width/2.0, -height/2.0, 0 );
-    //     
-    //     // get mouse/pointer events
-    //     //glfwSetCursorPosCallback( window, checkmouse );
-    //     
-    //     // get key events
-    //     glfwSetKeyCallback (window, key_callback);
-    // }
-    // 
-    // void GuiWorld::Step( float timestep, 
-    // 		const std::vector<Robot*>& robots, 
-    // 		const std::vector<Box*>& bodies ) 
-    // {
-    //   if( !paused || step)
-    //     {
-    //       World::Step( timestep );
-    // 
-    //       step = false;
-    //       //	paused = true;
-    //     }
-    // 
-    //   if( --draw_interval < 1 )
-    //     {
-    //       draw_interval = skip;
-    // 
-    //       glClearColor( 0.8, 0.8, 0.8, 1.0 ); 
-    //       glClear(GL_COLOR_BUFFER_BIT);	
-    //       
-    //       for( int i=0; i<bodies.size(); i++ )
-    // 	DrawBody( bodies[i]->body, c_gray );
-    //       
-    //       for( int i=0; i<robots.size(); i++ )
-    // 	{
-    // 	  DrawBody( robots[i]->body, c_red );
-    // 	  DrawBody( robots[i]->bumper, c_darkred );
-    // 	}
-    //       
-    //       // draw a nose on the robot
-    //       glColor3f( 1,1,1 );
-    //       glPointSize( 12 );
-    //       glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    //       glBegin( GL_TRIANGLES );
-    //       for( int i=0; i<robots.size(); i++ )
-    // 	{      
-    // 	  const b2Transform& t = robots[i]->body->GetTransform();
-    // 	  const float a = t.q.GetAngle();
-    // 	  
-    // 	  glVertex2f( t.p.x + Robot::size/2.0 * cos(a),
-    // 		      t.p.y + Robot::size/2.0 * sin(a) );		  
-    // 	  glVertex2f( t.p.x + Robot::size/3.0 * cos(a+0.5),
-    // 		      t.p.y + Robot::size/3.0 * sin(a+0.5) );		  
-    // 	  glVertex2f( t.p.x + Robot::size/3.0 * cos(a-0.5),
-    // 		      t.p.y + Robot::size/3.0 * sin(a-0.5) );		  
-    // 	}
-    //       glEnd();
-    //       
-    //       glBegin( GL_LINES );
-    //       glVertex2f( 0,0 );
-    //       glVertex2f( width,0 );
-    //       glVertex2f( 0,0 );
-    //       glVertex2f( 0,height );
-    //       glEnd();
-    //       
-    //       // draw the light sources  
-    //       glColor4f( 1,1,0,0.2 );
-    //       for( std::vector<Light>::iterator it = Robot::lights.begin(); 
-    // 	   it != Robot::lights.end(); 
-    // 	   it++ )
-    // 	{
-    // 	  DrawDisk( it->x, it->y, sqrt( it->intensity ) );
-    // 	}
-    //       
-    //       /* Swap front and back buffers */
-    //       glfwSwapBuffers(window);
-    //       
-    //       /* Poll for and process events */
-    //       glfwPollEvents();
-    //     }
-    // }
-    // 
-    // GuiWorld::~GuiWorld( void )
-    // {
-    //   glfwTerminate();
-    // }
-    // 
-    // bool GuiWorld::RequestShutdown( void )
-    // {
-    //   return glfwWindowShouldClose(window);
-    // }
+float LightController::GetIntensity( float x, float y ){
+    float brightness = 1.0;
+    for( auto light : lights ){
+        float intensity = 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
+        brightness = std::min(brightness, intensity);
+        //brightness *= 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
+    }
+    return brightness;
+}
+
+void LightController::SetGoals( const std::vector<Goal*>& goals ){
+    for( auto goal : goals ){
+        lights.push_back( new Light(goal->GetCenter()) );
+    }
+}
+
+// -> Light off-center to the boxes
+void LightController::Update( 
+        const std::vector<Goal*>& goals,
+        const std::vector<Box*>& boxes){ 
+    for( int i=0; i<std::min(goals.size(),boxes.size()); ++i ){
+        b2Vec2 goal = goals[i]->GetCenter();
+        b2Vec2 box = boxes[i]->GetCenter();
+        float distBoxToGoal = sqrt(boxes[i]->SqrDistanceTo(*goals[i]));
+
+        if(distBoxToGoal > goalError){
+            float x = (goal.x-box.x)*radiusSmall/distBoxToGoal + box.x;
+            float y = (goal.y-box.y)*(x-box.x)/(goal.x-box.x) + box.y;
+            lights[i]->SetCenter(x,y);
+        } else {
+            goals[i]->filled = true;
+            lights[i]->SetCenter(goal);
+            //std::cout << "[GOAL REACHED]" << std::endl;
+        }
+        //goals[i]->WhereAmI();
+        //boxes[i]->WhereAmI();
+        //lights[i]->WhereAmI();
+    }
+}
+
+// TODO: implement proper behaviour
+// -> Light centered at the goal slowly diminishing
+void LightController::Update(
+        const std::vector<Goal*>& goals,
+        const std::vector<Box*>& boxes,
+        float timeStep ){
+    static float maxRadius = 4.0;
+    static float growRate = -10e-4;
+    timeElapsed += timeStep;
+    for( size_t i=0; i<goals.size(); ++i ){
+        if( !goals[i]->filled ){
+            radiusSmall = std::max(radiusInit, maxRadius + growRate*timeElapsed);
+            scaleFactor = GetScaleFactor(radiusSmall);
+            radiusLarge = GetRadiusLarge();
+            Light::radiusSmall = radiusSmall;
+            Light::radiusLarge = radiusLarge;
+        }
+    }
+    // std::cout << "Time Elapsed: " << timeElapsed << std::endl;
+    if( radiusInit/maxRadius > maxRadius + growRate*timeElapsed ){
+        timeElapsed = 0;
+        maxRadius *= 0.9;
+        for( size_t g=0; g<goals.size(); ++g ){
+            if( ! goals[g]->filled ){
+                for( size_t b=0; b<boxes.size(); ++b ){ 
+                    if( sqrt(goals[g]->SqrDistanceTo(*boxes[b])) < goalError )
+                        goals[g]->filled = true;
+                }
+            }
+        }
+    }
+}
+// ===> END LIGHTCONTROLLER class methods

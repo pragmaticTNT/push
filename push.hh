@@ -8,13 +8,6 @@
 #include <Box2D/Box2D.h>
 #include <GLFW/glfw3.h>
 
-typedef float XCoord;
-typedef float YCoord;
-typedef float Angle;
-typedef float Radius;
-typedef float Intensity;
-typedef float Epsilon;  // Error tolerance
-typedef b2Vec2 Center;
 typedef enum {
     SHAPE_RECT=0,
     SHAPE_CIRC,
@@ -25,158 +18,99 @@ class World;
 
 class WorldObject {
     protected:
-        Center center;
-        void WhereAmI(std::string objectType){
+        b2Vec2 center;
+        void WhereAmI( std::string objectType ){
             std::cout << objectType << ": (" << center.x << "," << center.y << ")" << std::endl;
         }
+        void DrawDisk( b2Vec2 center, float radius );
+        void DrawCircle( b2Vec2 center, float radius );
+        void DrawBody( b2Body* b, const float color[3] );
+
     public:
-        WorldObject( XCoord x, YCoord y ) : center( b2Vec2(x,y) ){}
-        WorldObject( Center center ): center( center ){}
+        WorldObject( float x, float y ) : center( b2Vec2(x,y) ){}
+        WorldObject( b2Vec2 center ): center( center ){}
         float SqrDistanceTo( const WorldObject& other ){
             return pow(center.x-other.center.x,2) + pow(center.y-other.center.y,2);             
         }
-        float SqrDistanceTo( XCoord x, YCoord y ){
+        float SqrDistanceTo( float x, float y ){
             return pow(center.x-x,2) + pow(center.y-y,2);              
         }
-        Center GetCenter(){ return center; }
+        b2Vec2 GetCenter( void ){ return center; }
+        virtual void Draw( void ) = 0;
 }; // END WorldObject class
-
-class Goal : public WorldObject {
-    public:
-        Radius radius;  // r: radius for circle or sidelen/2 for square
-        bool filled;
-
-        Goal ( XCoord x, YCoord y, Radius radius ): 
-            WorldObject(x,y), radius(radius), filled(false){}
-        ~Goal(){}
-        void WhereAmI(){ WorldObject::WhereAmI("Goal"); }
-}; // END Goal class
 
 class Box : public WorldObject {
     public:
         static float size; 
         b2Body* body;
         
-        Box( World& world, Epsilon spawnDist, box_shape_t shape = SHAPE_RECT );
-        Center GetCenter(){
+        Box( World& world, float spawnDist, box_shape_t shape = SHAPE_CIRC );
+        b2Vec2 GetCenter( void ){
             center = (body->GetWorldCenter());
             return center;
         }
-        void WhereAmI(){ WorldObject::WhereAmI("Box"); }
+        void WhereAmI( void ){ WorldObject::WhereAmI("Box"); }
+        void Draw( void );
 }; // END Box class
+
+class Goal : public WorldObject {
+    public:
+        float radius;  // r: circle radius or sidelen/2 for square
+        bool filled;
+
+        Goal ( float x, float y, float radius ) : 
+            WorldObject(x,y), radius(radius), filled(false){}
+        ~Goal(){}
+        void WhereAmI( void ){ WorldObject::WhereAmI("Goal"); }
+        void Draw( void );
+}; // END Goal class
 
 class Light : public WorldObject {
     public:
-        Light( XCoord x, YCoord y ) : WorldObject(x,y){}
-        Light( Center center ) : WorldObject(center){}
+        static float radiusSmall, radiusLarge;
+
+        Light( float x, float y ) : WorldObject(x,y){}
+        Light( b2Vec2 center ) : WorldObject(center){}
         ~Light(){}
 
-        void SetCenter( XCoord x, YCoord y ){ center = b2Vec2(x,y); }
-        void SetCenter( Center here ){ center = here; }
-        void WhereAmI(){ WorldObject::WhereAmI("Light"); }
+        void SetCenter( float x, float y ){ center = b2Vec2(x,y); }
+        void SetCenter( b2Vec2 here ){ center = here; }
+        void WhereAmI( void ){ WorldObject::WhereAmI("Light"); }
+        void Draw( void );
 }; // END Light class
-
-class LightController {
-    private:
-        float scaleFactor;          // ORDER DEPENDENCY 
-        float timeElapsed;          
-        Epsilon goalError;          
-        Intensity avoidIntensity;   
-        Intensity bufferIntensity;  
-
-        float GetScaleFactor( Radius radius ){
-            return ((1.0/(1-avoidIntensity))-1)/pow(radius,2.0);
-        }
-        Radius GetRadiusLarge(){
-            return sqrt(((1.0/(1-bufferIntensity))-1)/scaleFactor);
-        }
-
-    public:
-        std::vector<Light*> lights;
-        Radius radiusInit;
-        Radius radiusSmall; 
-        Radius radiusLarge;         // ORDER DEPENDENCY
-
-        LightController( Intensity avoidIntensity = 0.2, Intensity bufferIntensity = 0.4, Radius radiusSmall = 1.0, Epsilon goalError = 0.1 );
-        ~LightController();
-        Intensity GetIntensity( XCoord x, YCoord y );
-        void SetGoals( const std::vector<Goal*>& goals );
-        void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes );
-        void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep );
-        //void PairGoalsAndBoxes( void );
-}; // END LightController Class
 
 class Robot : public WorldObject{
     protected:
         // get sensor data
         bool isBumperPressed( void );
-        Intensity lightIntensity;
+        float lightIntensity;
         
         // send commands
-        void SetSpeed( XCoord x, YCoord y, Angle angle );
+        void SetSpeed( float x, float y, float angle );
 
     public:
         static float size;
         b2Body *body, *bumper;
         b2PrismaticJoint* joint;
         
-        Robot( World& world, XCoord x, YCoord y, Angle angle);      
-        Center GetCenter(){
+        Robot( World& world, float x, float y, float angle);      
+        b2Vec2 GetCenter( void ){
             center = (body->GetWorldCenter());
             return center;
         }
-        void WhereAmI() { WorldObject::WhereAmI("Robot"); }
+        void WhereAmI( void ) { WorldObject::WhereAmI("Robot"); }
+        void Draw( void );
         virtual void Update( float timestep, World& world ) = 0; 
 }; // END Robot class
 
-class World {
-    protected:
-        std::vector<Goal*> goals;
-        std::vector<Box*> boxes;
-        std::vector<Robot*> robots;
-        std::vector<b2Body*> groundBody;    // Boundary
-        LightController lightCTRL;
-        Epsilon spawnDist;                  // Spawn object away from wall
-
-        void AddBoundary( void );
-        void AddGoals( const std::string& goalFile = "" );
-        void AddRobots( size_t numRobots );
-        void AddBoxes( size_t numBoxes, box_shape_t shape );
-
-    public:  
-        b2World* b2world;
-        float width, height, boxDiam;
-        Intensity lightAvoidIntensity, lightBufferIntensity; // Small and Large circle radii respectively 
-
-        World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName, box_shape_t shape = SHAPE_CIRC ); 
-        Intensity GetLightIntensity ( const Center& here );
-        void Step( float timestep );
-}; // END World class
-
-class GuiWorld : public World {
-        // -> Helper Functions
-        void DrawDisk( Center center, Radius radius );
-        void DrawCircle( Center center, Radius radius );
-        void DrawBody( b2Body* b, const float color[3] );
-        void Draw( const LightController& lightCTRL, const float color[3] );
-        void Draw( const std::vector<Box*>& bodies, const float color[3] );
-        void Draw( const std::vector<Robot*>& robots, const float color[3] );
-        void Draw( const std::vector<b2Body*>& walls, const float color[3] );
-        void Draw( const std::vector<Goal*>& goals, const float color[3] );
-
+class Wall : public WorldObject {
     public:
-        static bool paused;
-        static bool step;
-        static int skip;
-
-        GLFWwindow* window;
-        int draw_interval;
-
-        GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName );
-        ~GuiWorld();
-        void Step( float timestep );
-        bool RequestShutdown();
-}; // END GuiWorld class
+        b2Body* body;
+        
+        Wall( b2Body* body, b2Vec3& dim );
+        b2Vec2 GetCenter( void ){ return center; }
+        void Draw( void );
+}; // END Wall class
 
 class Pusher : public Robot {
     private:
@@ -203,4 +137,74 @@ class Pusher : public Robot {
     void Update( float timestep, World& world );
 }; // END Pusher class
 
+class LightController {
+    private:
+        float scaleFactor;          // ORDER DEPENDENCY 
+        float timeElapsed;          
+        float goalError;          
+        float avoidIntensity;   
+        float bufferIntensity;  
+
+        float GetScaleFactor( float radius ){
+            return ((1.0/(1-avoidIntensity))-1)/pow(radius,2.0);
+        }
+        float GetRadiusLarge(){
+            return sqrt(((1.0/(1-bufferIntensity))-1)/scaleFactor);
+        }
+
+    public:
+        std::vector<Light*> lights;
+        float radiusInit;
+        float radiusSmall; 
+        float radiusLarge;         // ORDER DEPENDENCY
+
+        LightController( float avoidIntensity = 0.2, float bufferIntensity = 0.4, float radiusSmall = 0.5, float goalError = 0.1 );
+        ~LightController();
+        float GetIntensity( float x, float y );
+        void SetGoals( const std::vector<Goal*>& goals );
+        void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes );
+        void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep );
+        //void PairGoalsAndBoxes( void );
+}; // END LightController Class
+
+class World {
+    protected:
+        std::vector<Goal*> goals;
+        std::vector<Box*> boxes;
+        std::vector<Robot*> robots;
+        std::vector<Wall*> groundBody;    // Boundary
+        LightController lightCTRL;
+        float spawnDist;    // Spawn object away from wall
+
+        void AddBoundary( void );
+        void AddGoals( const std::string& goalFile = "" );
+        void AddRobots( size_t numRobots );
+        void AddBoxes( size_t numBoxes, box_shape_t shape );
+
+    public:  
+        b2World* b2world;
+        float width, height, boxDiam;
+        float lightAvoidIntensity, lightBufferIntensity; // Small and Large circle radii respectively 
+
+        World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName, box_shape_t shape = SHAPE_CIRC ); 
+        ~World();
+        float GetLightIntensity ( const b2Vec2& here );
+        void Step( float timestep );
+}; // END World class
+
+class GuiWorld : public World {
+        void DrawObjects( const std::vector<WorldObject*>& objects );
+    public:
+        static bool paused;
+        static bool step;
+        static int skip;
+
+        GLFWwindow* window;
+        int draw_interval;
+
+        GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName );
+        ~GuiWorld();
+        void Step( float timestep );
+        bool RequestShutdown();
+}; // END GuiWorld class
 #endif

@@ -6,17 +6,6 @@
 double mousex = 0;
 double mousey = 0;
 
-// ===> Specified colors
-const float c_yellow[3]     = {1.0, 1.0, 0.0};
-const float c_light[3]      = {0.8, 0.8, 0.8};
-const float c_red[3]        = {1.0, 0.0, 0.0};
-const float c_blue[3]       = {0.0, 1.0, 0.0};
-const float c_green[3]      = {0.0, 0.0, 1.0};
-const float c_darkred[3]    = {0.8, 0.0, 0.0};
-const float c_tan[3]        = {0.8, 0.6, 0.5};
-const float c_gray[3]       = {0.9, 0.9, 1.0};
-const float c_black[3]      = {0.0, 0.0, 0.0};
-
 bool GuiWorld::paused = true;
 bool GuiWorld::step = false;
 int GuiWorld::skip = 1;
@@ -56,137 +45,6 @@ void key_callback( GLFWwindow* window, int key, int scancode, int action, int mo
         }
 }
 
-void GuiWorld::DrawDisk( Center center, Radius radius ) { 
-    const int num_segments = 32.0 * sqrtf(radius);
-    const float theta = 2 * M_PI / float(num_segments); 
-    const float c = cosf(theta); 
-    const float s = sinf(theta);
-    float t;
-
-    float x = radius; //we start at angle = 0 
-    float y = 0; 
-
-    //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-    glBegin(GL_TRIANGLE_STRIP); 
-        for(int ii = 0; ii < num_segments; ii++) { 
-            glVertex2f( x + center.x, y + center.y); 
-            glVertex2f( center.x, center.y ); 
-
-            //apply the rotation matrix
-            t = x;
-            x = c * x - s * y;
-            y = s * t + c * y;
-        }
-    glVertex2f( radius+center.x, 0+center.y ); // first point again to close disk
-    glEnd();
-}
-
-void GuiWorld::DrawCircle( Center center, Radius radius) {
-    const int lineAmount = 32.0 * sqrtf(radius);
-    float twicePi = M_PI * 2.0f;
-
-    glBegin(GL_LINE_LOOP);
-        for( int i = 0; i < lineAmount; i++ ){
-            glVertex2f(
-                center.x + (radius*cosf(i*twicePi/lineAmount)),
-                center.y + (radius*sinf(i*twicePi/lineAmount))
-            );
-        }
-    glEnd();
-}
-
-void GuiWorld::DrawBody( b2Body* b, const float color[3] ) {
-    for (b2Fixture* f = b->GetFixtureList(); f; f = f->GetNext()){
-        switch( f->GetType() ){
-            case b2Shape::e_circle:
-                {
-                b2CircleShape* circle = (b2CircleShape*)f->GetShape();
-                b2Vec2 position = b->GetWorldCenter();
-                glColor3fv( color );
-                DrawDisk( position, circle->m_radius ); 
-                }
-                break;
-            case b2Shape::e_polygon:
-                {
-                b2PolygonShape* poly = (b2PolygonShape*)f->GetShape();
-                const int count = poly->GetVertexCount();
-
-                glColor3fv( color );
-                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL );
-                glBegin( GL_POLYGON );	
-                for( int i = 0; i < count; i++ ){
-                    const b2Vec2 w = b->GetWorldPoint( poly->GetVertex( i ));		
-                    glVertex2f( w.x, w.y );
-                }
-                glEnd();		  
-
-                glLineWidth( 3.0 );
-                // glColor3f( color[0]/5, color[1]/5, color[2]/5 );
-                // // TODO: this line in particular is related to the circles not being properly filled in... I wonder why
-                // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-                // glBegin( GL_POLYGON );	
-                // for( int i = 0; i < count; i++ ){
-                //     const b2Vec2& v = poly->GetVertex( i );		 
-                //     const b2Vec2 w = b->GetWorldPoint( v );		 
-                //     glVertex2f( w.x, w.y );
-                // }
-                // glEnd();		  
-                }
-                break;
-            default:
-                break;
-        }
-    } 
-}
-
-void GuiWorld::Draw( const LightController& lightCTRL, const float color[3] ){
-    glColor4f( color[0], color[1], color[2], 0.5 );
-    for( auto light : lightCTRL.lights ){
-        DrawDisk( light->GetCenter(), lightCTRL.radiusSmall );
-        DrawDisk( light->GetCenter(), lightCTRL.radiusLarge );
-    }
-}
-
-void GuiWorld::Draw( const std::vector<Box*>& bodies, const float color[3] ){
-    for( auto box : boxes )
-        DrawBody( box->body, color );
-}
-
-void GuiWorld::Draw( const std::vector<Robot*>& robots, const float color[3] ){
-    for( auto robot : robots ) {
-        DrawBody( robot->body, color );
-        DrawBody( robot->bumper, c_darkred );
-    }
-    // draw a nose on the robot
-    glColor3f( 1,1,1 );
-    glPointSize( 12 );
-    glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    glBegin( GL_TRIANGLES );
-    for( auto robot : robots ) {      
-        const b2Transform& t = robot->body->GetTransform();
-        const float a = t.q.GetAngle();
-
-        glVertex2f( t.p.x + Robot::size/2.0 * cos(a),
-          t.p.y + Robot::size/2.0 * sin(a) );		  
-        glVertex2f( t.p.x + Robot::size/3.0 * cos(a+0.5),
-          t.p.y + Robot::size/3.0 * sin(a+0.5) );		  
-        glVertex2f( t.p.x + Robot::size/3.0 * cos(a-0.5),
-          t.p.y + Robot::size/3.0 * sin(a-0.5) );		  
-    }
-    glEnd();
-}
-
-void GuiWorld::Draw( const std::vector<b2Body*>& walls, const float color[3] ){
-    for( auto wall : walls )
-        DrawBody( wall, color );
-}
-
-void GuiWorld::Draw( const std::vector<Goal*>& goals, const float color[3] ){
-    glColor3fv( color );
-    for( auto goal : goals )
-        DrawCircle( goal->GetCenter(), goal->radius );
-}
-
 GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName ) : 
     World( width, height, boxDiam, numRobots, numBoxes, fileName ),
     window(NULL),
@@ -224,6 +82,11 @@ GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, 
     glfwSetKeyCallback (window, key_callback);
 }
 
+// void GuiWorld::DrawObjects( const std::vector<WorldObject*>& objects ){
+//     for( auto obj : objects )
+//         obj->Draw();
+// }
+
 void GuiWorld::Step( float timestep ){
     if( !paused || step) {
         World::Step( timestep );
@@ -239,14 +102,24 @@ void GuiWorld::Step( float timestep ){
         glClear(GL_COLOR_BUFFER_BIT);	
 
         glPolygonOffset( 1.0, 1.0 ); 
-        Draw( lightCTRL, c_light );
-        Draw( goals, c_green );
+        // DrawObjects( lightCTRL.lights );
+        // DrawObjects( goals );
+        for( auto light : lightCTRL.lights )
+            light->Draw();
+        for( auto goal : goals )
+            goal->Draw();
 
         // ===> DRAW: field objects
         glPolygonOffset( 0, 0 ); 
-        Draw( boxes, c_gray );
-        Draw( robots, c_red );
-        Draw( groundBody, c_black );
+        // DrawObjects( boxes );
+        // DrawObjects( robots );
+        // DrawObjects( groundBody );
+        for ( auto box : boxes )
+            box->Draw();
+        for ( auto robot : robots )
+            robot->Draw();
+        for ( auto wall : groundBody )
+            wall->Draw();
 
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
