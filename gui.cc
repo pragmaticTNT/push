@@ -82,10 +82,10 @@ GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, 
     glfwSetKeyCallback (window, key_callback);
 }
 
-// void GuiWorld::DrawObjects( const std::vector<WorldObject*>& objects ){
-//     for( auto obj : objects )
-//         obj->Draw();
-// }
+void GuiWorld::DrawObjects( const std::vector<WorldObject*>& objects ){
+    for( auto obj : objects )
+        obj->Draw();
+}
 
 void GuiWorld::Step( float timestep ){
     if( !paused || step) {
@@ -102,7 +102,7 @@ void GuiWorld::Step( float timestep ){
         glClear(GL_COLOR_BUFFER_BIT);	
 
         glPolygonOffset( 1.0, 1.0 ); 
-        // DrawObjects( lightCTRL.lights );
+        // DrawObjects( static_cast<std::vector<WorldObject*> >(lightCTRL.lights) );
         // DrawObjects( goals );
         for( auto light : lightCTRL.lights )
             light->Draw();

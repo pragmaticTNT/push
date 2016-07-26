@@ -8,6 +8,7 @@
 #include <Box2D/Box2D.h>
 #include <GLFW/glfw3.h>
 
+static const float EPSILON = 10e-4;
 typedef enum {
     SHAPE_RECT=0,
     SHAPE_CIRC,
@@ -30,10 +31,10 @@ class WorldObject {
         WorldObject( float x, float y ) : center( b2Vec2(x,y) ){}
         WorldObject( b2Vec2 center ): center( center ){}
         float SqrDistanceTo( const WorldObject& other ){
-            return pow(center.x-other.center.x,2) + pow(center.y-other.center.y,2);             
+            return pow(center.x-other.center.x,2.0) + pow(center.y-other.center.y,2.0);
         }
         float SqrDistanceTo( float x, float y ){
-            return pow(center.x-x,2) + pow(center.y-y,2);              
+            return pow(center.x-x,2.0) + pow(center.y-y,2.0);
         }
         b2Vec2 GetCenter( void ){ return center; }
         virtual void Draw( void ) = 0;
@@ -140,10 +141,14 @@ class Pusher : public Robot {
 class LightController {
     private:
         float scaleFactor;          // ORDER DEPENDENCY 
-        float timeElapsed;          
-        float goalError;          
         float avoidIntensity;   
         float bufferIntensity;  
+
+        // Update parameters
+        float goalError, growRate, trialTime, patternTime;
+        float timeElapsed, maxRadius;
+        bool isFilled, repeatPattern;
+        bool startScramble, scramble;
 
         float GetScaleFactor( float radius ){
             return ((1.0/(1-avoidIntensity))-1)/pow(radius,2.0);
@@ -151,42 +156,45 @@ class LightController {
         float GetRadiusLarge(){
             return sqrt(((1.0/(1-bufferIntensity))-1)/scaleFactor);
         }
+        float UpdateGoalsInfo( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes );
 
     public:
         std::vector<Light*> lights;
+        // TODO(Lily): Why are these public?
         float radiusInit;
         float radiusSmall; 
         float radiusLarge;         // ORDER DEPENDENCY
 
-        LightController( float avoidIntensity = 0.2, float bufferIntensity = 0.4, float radiusSmall = 0.5, float goalError = 0.1 );
+        LightController( float avoidIntensity = 0.2, float bufferIntensity = 0.4, float radiusSmall = 0.5);
         ~LightController();
         float GetIntensity( float x, float y );
-        void SetGoals( const std::vector<Goal*>& goals );
+        void SetGoals( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float goalError, float growRate, float trialWaitTime, float patternWaitTime = 0, bool repeatPattern = false);
         void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes );
         void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep );
-        //void PairGoalsAndBoxes( void );
 }; // END LightController Class
 
 class World {
     protected:
+        std::vector<std::vector<Goal*> > goalList;
         std::vector<Goal*> goals;
         std::vector<Box*> boxes;
         std::vector<Robot*> robots;
         std::vector<Wall*> groundBody;    // Boundary
         LightController lightCTRL;
         float spawnDist;    // Spawn object away from wall
+        size_t numBoxes, numPatterns;
 
         void AddBoundary( void );
-        void AddGoals( const std::string& goalFile = "" );
+        void AddGoals( const std::string& goalFile, std::vector<std::string>& parameters );
         void AddRobots( size_t numRobots );
         void AddBoxes( size_t numBoxes, box_shape_t shape );
 
     public:  
         b2World* b2world;
-        float width, height, boxDiam;
+        float width, height;
         float lightAvoidIntensity, lightBufferIntensity; // Small and Large circle radii respectively 
 
-        World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName, box_shape_t shape = SHAPE_CIRC ); 
+        World( float worldWidth, float worldHeight, float spawnDist, size_t robotNum, size_t boxNum, const std::string& goalFile, box_shape_t boxShape = SHAPE_CIRC, float lightAvoidIntensity = 0.2, float lightBufferIntensity = 0.4, float lightSmallRadius = 0.5 );
         ~World();
         float GetLightIntensity ( const b2Vec2& here );
         void Step( float timestep );

@@ -33,28 +33,30 @@ const float c_black[3]      = {0.0, 0.0, 0.0};
 
 // ===> WORLDOBJECT class methods
 void WorldObject::DrawDisk( b2Vec2 center, float radius ) { 
-    const int num_segments = 32.0 * sqrtf(radius);
-    const float theta = 2 * M_PI / float(num_segments); 
-    const float c = cosf(theta); 
-    const float s = sinf(theta);
-    float t;
+    if( radius > EPSILON ){
+        const int num_segments = 32.0 * sqrtf(radius);
+        const float theta = 2 * M_PI / float(num_segments); 
+        const float c = cosf(theta); 
+        const float s = sinf(theta);
+        float t;
 
-    float x = radius; //we start at angle = 0 
-    float y = 0; 
+        float x = radius; //we start at angle = 0 
+        float y = 0; 
 
-    //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-    glBegin(GL_TRIANGLE_STRIP); 
-        for(int ii = 0; ii < num_segments; ii++) { 
-            glVertex2f( x + center.x, y + center.y); 
-            glVertex2f( center.x, center.y ); 
+        //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+        glBegin(GL_TRIANGLE_STRIP); 
+            for(int ii = 0; ii < num_segments; ii++) { 
+                glVertex2f( x + center.x, y + center.y); 
+                glVertex2f( center.x, center.y ); 
 
-            //apply the rotation matrix
-            t = x;
-            x = c * x - s * y;
-            y = s * t + c * y;
-        }
-    glVertex2f( radius+center.x, 0+center.y ); // first point again to close disk
-    glEnd();
+                //apply the rotation matrix
+                t = x;
+                x = c * x - s * y;
+                y = s * t + c * y;
+            }
+        glVertex2f( radius+center.x, 0+center.y ); // first point again to close disk
+        glEnd();
+    }
 }
 
 void WorldObject::DrawCircle( b2Vec2 center, float radius) {
@@ -118,25 +120,42 @@ void WorldObject::DrawBody( b2Body* b, const float color[3] ) {
 
 
 // ===> WORLD class methods
-World::World( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& goalFile, box_shape_t shape ) :
-    width(width),
-    height(height),
-    boxDiam(boxDiam),
-    spawnDist(Box::size),
-    lightCTRL(LightController()),
+World::World( float worldWidth, float worldHeight, float spawnDist, size_t robotNum, size_t boxNum, const std::string& goalFile, box_shape_t boxShape, float lightAvoidIntensity, float lightBufferIntensity, float lightSmallRadius ) :
+    width(worldWidth),
+    height(worldHeight),
+    numBoxes(boxNum),
+    spawnDist(spawnDist),
+    lightAvoidIntensity(lightAvoidIntensity),
+    lightBufferIntensity(lightBufferIntensity),
+    lightCTRL(LightController(lightAvoidIntensity, lightBufferIntensity, lightSmallRadius)),
     b2world( new b2World( b2Vec2( 0,0 ))) // gravity 
 {
-    // Lets get these from the goal file does that make any sense? What do those parameters have to do with the goal... hum... will have to decide at some point... no... like the box shapes I think we are going to pass these parameters in from the main.
-    // TODO: Figure out where we are setting these
-    lightAvoidIntensity = 0.2;
-    lightBufferIntensity = 0.4;
+    std::vector<std::string> params;
+    AddGoals(goalFile, params);     // modifies params
 
-    std::cout << "Starting " << width << "x" << height << " World... robots: " << numRobots << " boxes: " << numBoxes << std::endl;
     AddBoundary();
-    AddRobots(numRobots);
-    AddBoxes(numBoxes, shape);
-    AddGoals(goalFile);
-    lightCTRL.SetGoals(goals);
+    AddRobots(robotNum);
+    AddBoxes(numBoxes, boxShape);
+
+    //TODO: add comment listing the input parameters of the goal files
+    if( params.size() >= 4 ){
+        float goalError, growRate, trialTime; 
+        float patternTime = -1;
+        bool repeat = false;
+        numPatterns = (size_t) std::stoi(params[0]);
+        trialTime = std::stof(params[1]);
+        goalError = std::stof(params[2]);
+        growRate = std::stof(params[3]);
+        if( params.size() >= 6 && numPatterns > 1){
+            patternTime = std::stof(params[4]);
+            repeat = std::stoi(params[5]) == 0 ? false : true;
+        }
+        lightCTRL.SetGoals(goals, boxes, goalError, growRate, trialTime, patternTime, repeat);
+    } else {
+        std::cout << "[ERR] Goal file does not have enough parameters." << std::endl;
+    }
+
+    std::cout << "Starting " << worldWidth << "x" << worldHeight << " World... robots: " << robotNum << " boxes: " << boxNum << std::endl;
 }
 
 void World::AddBoundary( void ){
@@ -157,10 +176,10 @@ void World::AddBoundary( void ){
         b2Vec3( width/2, height, 0 ), 
         b2Vec3( 0, height/2, M_PI/2.0 ), 
         b2Vec3( width, height/2, M_PI/2.0 ), 
-        b2Vec3( boxDiam, boxDiam, 3*M_PI/4.0 ), 
-        b2Vec3( width-boxDiam, boxDiam, M_PI/4.0 ), 
-        b2Vec3( width-boxDiam, height-boxDiam, 3*M_PI/4.0 ), 
-        b2Vec3( boxDiam, height-boxDiam, M_PI/4.0 ) 
+        b2Vec3( spawnDist, spawnDist, 3*M_PI/4.0 ), 
+        b2Vec3( width-spawnDist, spawnDist, M_PI/4.0 ), 
+        b2Vec3( width-spawnDist, height-spawnDist, 3*M_PI/4.0 ), 
+        b2Vec3( spawnDist, height-spawnDist, M_PI/4.0 ) 
     };
 
     for( b2Vec3 wall : boundary ){
@@ -183,26 +202,30 @@ void World::AddBoxes( size_t numBoxes, box_shape_t shape ){
         boxes.push_back( new Box(*this, spawnDist, shape) );
 }
 
-void World::AddGoals( const std::string& fileName ){
+void World::AddGoals( const std::string& fileName, std::vector<std::string>& parameters ){
+    bool setParameters = false;
     if( fileName.empty() ){ // DEFAULT
         std::cout << "[WARNING] No file name given. Using DEFAULT.";
         goals.push_back( new Goal(3,3,Box::size/2) );
     } else {                // READ FROM FILE
-        std::string goal, x, y;
+        std::string goal, x, y, param;
         std::ifstream goalFile(fileName.c_str());
         if( goalFile.is_open() ){
-            // TODO: implent the first line setup stuff
-            // Lines preceeded by "#" are comments
-            // First non-comment line is setup:
-            //  -box size
-            //  -avoid intensity
-            //  -buffer intensity
-            //  -small light radius
-            while( std::getline(goalFile, goal)){
+            while( std::getline(goalFile, goal) ){
                 std::stringstream ss(goal);
                 ss >> x >> y;
-                if( x.at(0) != '#' )
-                    goals.push_back( new Goal(std::stof(x), std::stof(y), Box::size/2) );
+                if( x.at(0) != '#' && goal.size() > 0 ){
+                    if( !setParameters ){
+                        numBoxes = (size_t) std::stoi(x);
+                        Box::size = std::stof(y);
+                        while( ss >> param ){
+                            parameters.push_back(param);
+                        }
+                        setParameters = true;
+                    } else { 
+                        goals.push_back( new Goal( std::stof(x), std::stof(y), Box::size/2) );
+                    }
+                }
             }
             goalFile.close();
         } else {
@@ -320,6 +343,7 @@ Box::Box( World& world, float spawnDist, box_shape_t shape ) :
 }
 
 void Box::Draw( void ){
+    GetCenter();
     DrawBody( body, c_gray );
 }
 // ===> END BOX class methods
@@ -492,15 +516,20 @@ void Pusher::Update( float timestep, World& world ) {
 
 
 // ===> LIGHT CONTROLLER class methods
-LightController::LightController( float avoidIntensity, float bufferIntensity, float radiusSmall, float goalError ) :
-    timeElapsed(0),
-    goalError(goalError),
-    radiusInit(radiusSmall),
-    radiusSmall(radiusSmall),
+LightController::LightController( float avoidIntensity, float bufferIntensity, float radiusSmall ) :
     avoidIntensity(avoidIntensity),
     bufferIntensity(bufferIntensity),
+    radiusSmall(radiusSmall),
+    radiusInit(radiusSmall),
     scaleFactor(GetScaleFactor(radiusSmall)),
-    radiusLarge(GetRadiusLarge())
+    radiusLarge(GetRadiusLarge()),
+    goalError(0),
+    growRate(0),
+    timeElapsed(0),
+    maxRadius(0),
+    isFilled(false),
+    startScramble(false),
+    scramble(false)
 {
     Light::radiusSmall = radiusSmall;
     Light::radiusLarge = radiusLarge;
@@ -518,13 +547,36 @@ float LightController::GetIntensity( float x, float y ){
         brightness = std::min(brightness, intensity);
         //brightness *= 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
     }
-    return brightness;
+    return scramble ? 1.0 : brightness;
 }
 
-void LightController::SetGoals( const std::vector<Goal*>& goals ){
+void LightController::SetGoals( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float goalError, float growRate, float trialWaitTime, float patternWaitTime, bool repeatPattern ){
+    this->goalError = goalError;
+    this->growRate = growRate;
+    this->trialTime = trialWaitTime;
+    this->patternTime = patternWaitTime;
+    this->repeatPattern = repeatPattern;
+    maxRadius = UpdateGoalsInfo( goals, boxes );
     for( auto goal : goals ){
         lights.push_back( new Light(goal->GetCenter()) );
     }
+}
+
+float LightController::UpdateGoalsInfo( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes ){
+    float minAmongBoxes = INT_MAX, maxAmongGoals = 0;
+    for( Goal* goal: goals )
+        goal->GetCenter();
+    for( Box* box : boxes ){
+        box->GetCenter();
+        minAmongBoxes = INT_MAX;
+        for( Goal* goal : goals ){
+            float dist = sqrt(box->SqrDistanceTo(*goal));
+            minAmongBoxes = std::min(minAmongBoxes, dist);
+            goal->filled = dist < goalError;
+        }
+        maxAmongGoals = std::max(maxAmongGoals, minAmongBoxes);
+    }
+    return maxAmongGoals;
 }
 
 // -> Light off-center to the boxes
@@ -551,35 +603,43 @@ void LightController::Update(
     }
 }
 
-// TODO: implement proper behaviour
 // -> Light centered at the goal slowly diminishing
 void LightController::Update(
         const std::vector<Goal*>& goals,
         const std::vector<Box*>& boxes,
         float timeStep ){
-    static float maxRadius = 4.0;
-    static float growRate = -10e-4;
+
     timeElapsed += timeStep;
-    for( size_t i=0; i<goals.size(); ++i ){
-        if( !goals[i]->filled ){
-            radiusSmall = std::max(radiusInit, maxRadius + growRate*timeElapsed);
-            scaleFactor = GetScaleFactor(radiusSmall);
-            radiusLarge = GetRadiusLarge();
-            Light::radiusSmall = radiusSmall;
-            Light::radiusLarge = radiusLarge;
-        }
+    if( !scramble ){
+        radiusSmall = std::max(radiusInit, maxRadius + growRate*timeElapsed);
+        scaleFactor = GetScaleFactor(radiusSmall);
+        radiusLarge = GetRadiusLarge();
+        Light::radiusSmall = radiusSmall;
+        Light::radiusLarge = radiusLarge; 
     }
-    // std::cout << "Time Elapsed: " << timeElapsed << std::endl;
-    if( radiusInit/maxRadius > maxRadius + growRate*timeElapsed ){
+
+    if( timeElapsed > trialTime ){
         timeElapsed = 0;
-        maxRadius *= 0.9;
-        for( size_t g=0; g<goals.size(); ++g ){
-            if( ! goals[g]->filled ){
-                for( size_t b=0; b<boxes.size(); ++b ){ 
-                    if( sqrt(goals[g]->SqrDistanceTo(*boxes[b])) < goalError )
-                        goals[g]->filled = true;
+        maxRadius = UpdateGoalsInfo( goals, boxes );
+        if( !(maxRadius < goalError) ){
+            std::cout << "Current max error: " << maxRadius << std::endl;
+            if( maxRadius < radiusInit || scramble ){
+                if( !startScramble ){
+                    startScramble = true;
+                } else if ( !scramble ){
+                    std::cout << "Local minimum reached. Scrambling..." << std::endl;
+                    scramble = true; 
+                    Light::radiusSmall = 0;
+                    Light::radiusLarge = 0;
+                } else{
+                    startScramble = false;
+                    scramble = false;
                 }
             }
+        } else {
+            isFilled = true;
+            std::cout << "Goal shapes obtained." << std::endl;
+            // May need to keep on checking to maintain shape
         }
     }
 }
