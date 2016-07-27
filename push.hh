@@ -210,7 +210,7 @@ class GuiWorld : public World {
         GLFWwindow* window;
         int draw_interval;
 
-        GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName );
+        GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName, box_shape_t boxShape = SHAPE_CIRC, float lightAvoidIntensity = 0.2, float lightBufferIntensity = 0.4, float lightSmallRadius = 0.5 );
         ~GuiWorld();
         void Step( float timestep );
         bool RequestShutdown();

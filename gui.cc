@@ -45,8 +45,8 @@ void key_callback( GLFWwindow* window, int key, int scancode, int action, int mo
         }
 }
 
-GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName ) : 
-    World( width, height, boxDiam, numRobots, numBoxes, fileName ),
+GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName, box_shape_t boxShape, float lightAvoidIntensity, float lightBufferIntensity, float lightSmallRadius ) : 
+    World( width, height, boxDiam, numRobots, numBoxes, fileName, boxShape, lightAvoidIntensity, lightBufferIntensity, lightSmallRadius ),
     window(NULL),
     draw_interval( skip ) {
 

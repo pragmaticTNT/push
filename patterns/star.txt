@@ -1,0 +1,51 @@
+# Comments are preceeded by "#". Begin each pattern with a line containing "-". The first non-comment line is the goal specifications. The values are as follows (separate values by spaces):
+# (1) boxNum: INT(size_t) number of boxes required for the shape 
+# (2) boxRadius: FLOAT(+ve) radius of boxes 
+# (3) INT(size_t): number of patterns  
+# (4) FLOAT(+ve): wait time between trials (if boxes stuck in local maxima) 
+# (5) FLOAT(+ve): acceptable error distance to goal 
+# (6) FLOAT: shadow grow rate (-ve) to shrink (+ve) to grow 
+# (7) FLOAT(+ve): wait time between patterns ( REQ: num. patterns > 1 )
+# (8) BOOL: repeat pattern? ( REQ: num. pattern > 1)
+# COPY THIS TO ALL GOAL SPECIFICATION TXT FILES
+
+17 0.5 1 2500 0.2 -10e-4 0 0 
+
+# Center Ring
+5 5
+5.5 5
+5.25 5.43301
+5.25 4.56699
+4.5 5
+4.75 5.43301
+4.75 4.56699
+
+# Branches
+# 5.4755 5.1545
+5.9511 5.3090
+6.4266 5.4635
+
+# 5 5.5
+# 5 6
+# 5 6.5
+5 5.86603
+5 6.36603
+
+# 4.5245 5.1545
+4.0489 5.3090
+3.5734 5.4635
+
+# 4.7061 4.5955
+4.4122 4.1910
+4.1183 3.7865
+
+# 5.2939 4.5955
+5.5878 4.1910
+5.8817 3.7865
+
+# Fill
+# 5.4755 5.6545
+# 4.5245 5.6545
+# 5 4.19098
+# 4.2306 4.7500
+# 5.7694 4.7500

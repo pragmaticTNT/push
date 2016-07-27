@@ -59,7 +59,7 @@ int main( int argc, char* argv[] ){
         }
     }
 
-    GuiWorld world( WIDTH, HEIGHT, Robot::size, ROBOTS, BOXES, goalFile);
+    GuiWorld world( WIDTH, HEIGHT, Robot::size, ROBOTS, BOXES, "patterns/" + goalFile );
     /* Loop until the user closes the window */
     while( !world.RequestShutdown() ) {
         world.Step( timeStep );
