@@ -17,6 +17,7 @@ int GuiWorld::skip = 1;
 //   mousey = -y/10.0;
 // }
 
+// ===> GUIWORLD class methods
 void key_callback( GLFWwindow* window, int key, int scancode, int action, int mods) {
     if(action == GLFW_PRESS)
         switch( key ) {
@@ -45,8 +46,8 @@ void key_callback( GLFWwindow* window, int key, int scancode, int action, int mo
         }
 }
 
-GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName, box_shape_t boxShape, float lightAvoidIntensity, float lightBufferIntensity, float lightSmallRadius ) : 
-    World( width, height, boxDiam, numRobots, numBoxes, fileName, boxShape, lightAvoidIntensity, lightBufferIntensity, lightSmallRadius ),
+GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, size_t numBoxes, const std::string& fileName, box_shape_t boxShape ) : 
+    World( width, height, boxDiam, numRobots, numBoxes, fileName, boxShape ),
     window(NULL),
     draw_interval( skip ) {
 
@@ -58,7 +59,7 @@ GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, 
     }
 
     /* Create a windowed mode window and its OpenGL context */
-    window = glfwCreateWindow(800, 800, "Robot Sim", NULL, NULL);
+    window = glfwCreateWindow(1000, 1000, "Robot Sim", NULL, NULL);
     if (!window) {
         glfwTerminate();
         exit(2);
@@ -72,8 +73,8 @@ GuiWorld::GuiWorld( float width, float height, float boxDiam, size_t numRobots, 
 
     // scale the drawing to fit the whole world in the window, origin
     // at bottom left
-    glScalef( 2.0 / width, 2.0 / height, 1.0 );
-    glTranslatef( -width/2.0, -height/2.0, 0 );
+    glScalef( 2.0 / this->width, 2.0 / this->height, 1.0 );
+    glTranslatef( -this->width/2.0, -this->height/2.0, 0 );
 
     // get mouse/pointer events
     //glfwSetCursorPosCallback( window, checkmouse );
@@ -104,7 +105,7 @@ void GuiWorld::Step( float timestep ){
         glPolygonOffset( 1.0, 1.0 ); 
         // DrawObjects( static_cast<std::vector<WorldObject*> >(lightCTRL.lights) );
         // DrawObjects( goals );
-        for( auto light : lightCTRL.lights )
+        for( auto light : lightCTRL->lights )
             light->Draw();
         for( auto goal : goals )
             goal->Draw();
@@ -136,3 +137,4 @@ GuiWorld::~GuiWorld( void ){
 bool GuiWorld::RequestShutdown( void ){
     return glfwWindowShouldClose(window);
 }
+// ===> END GUIWORLD class methods

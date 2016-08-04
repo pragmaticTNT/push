@@ -1,0 +1,31 @@
+# This is the "k" template for the grid light controller
+# First line is the settings:
+# (0) lightControllerType: RADIAL or GRID (proper capitalization please)
+# (1) width: FLOAT(+ve)
+# (2) height: FLOAT(+ve)
+# (3) boxNum: INT(size_t)
+# (4) boxRadius: FLOAT(+ve)
+# (5) goalError: FLOAT(+ve)
+# (6) trialTime: FLOAT(+ve)
+# (7) dimGrid: INT(size_t) number of grids per row and column (mxm)
+# (LAST) numPatterns: INT(size_t)
+# Goals are row by column and are zero-indexed
+#TYPE	width	height	boxNum	boxRad	goalErr	time	dimGrid numPattern
+	    10 	    10 	    10 	    0.75 	0.2 	200 	11	1
+
+#0 0
+#10 10
+#10 0
+#5 5
+#0 10
+
+3 4
+4 4
+5 4
+6 4
+7 4
+5 5
+6 6
+7 7
+4 6
+3 7

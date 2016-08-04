@@ -1,15 +1,19 @@
 # Comments are preceeded by "#". Begin each pattern with a line containing "-". The first non-comment line is the goal specifications. The values are as follows (separate values by spaces):
+# (0) lightControllerType: RADIAL or GRID
+# (0) WIDTH
+# (0) HEIGHT
 # (1) boxNum: INT(size_t) number of boxes required for the shape 
 # (2) boxRadius: FLOAT(+ve) radius of boxes 
-# (3) INT(size_t): number of patterns  
+# (3) FLOAT(+ve): acceptable error distance to goal 
 # (4) FLOAT(+ve): wait time between trials (if boxes stuck in local maxima) 
-# (5) FLOAT(+ve): acceptable error distance to goal 
-# (6) FLOAT: shadow grow rate (-ve) to shrink (+ve) to grow 
-# (7) FLOAT(+ve): wait time between patterns ( REQ: num. patterns > 1 )
-# (8) BOOL: repeat pattern? ( REQ: num. pattern > 1)
+# (5) FLOAT: shadow grow rate (-ve) to shrink (+ve) to grow 
+# (6*) FLOAT(+ve): wait time between patterns ( REQ: num. patterns > 1 )
+# (7*) BOOL: repeat pattern? ( REQ: num. pattern > 1)
+# (LAST) INT(size_t): number of patterns  
+# * indicates optional parameters
 # COPY THIS TO ALL GOAL SPECIFICATION TXT FILES
 
-13 0.5 1 2000 0.2 -10e-4 0 0 
+RADIAL 10 10 13 0.5 0.2 2000 -10e-4 0 0 1 
 
 3.25 5.4331
 3.25 4.5669
