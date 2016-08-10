@@ -16,6 +16,7 @@ const float Pusher::BACKUP = 0.1;
 const float Pusher::TURNMAX = 1.5;
 const float Pusher::SPEEDX = 0.5;
 const float Pusher::SPEEDA = M_PI/2.0;
+const float Pusher::DEAD = 0.1;
 const float Pusher::maxspeedx = 0.5;
 const float Pusher::maxspeeda = M_PI/2.0;
 
@@ -487,6 +488,11 @@ void Pusher::Update( float timestep, World& world ) {
         speeda = 0;
     }
 
+    // if( currentLightIntensity < DEAD ){
+    //     timeleft = 0.0;
+    //     state = S_DEAD;
+    // }
+
     if( timeleft <= 0 ) // time to change to another behaviour
         switch( state ) {
             case S_PUSH:
@@ -517,6 +523,13 @@ void Pusher::Update( float timestep, World& world ) {
                 timeleft = PUSH;
                 speedx = SPEEDX;
                 speeda = 0;  
+                break;
+            case S_DEAD:
+                speedx = 0;
+                speeda = 0;
+                if( currentLightIntensity > DEAD ){
+                    state = S_TURN;
+                }
                 break;
             default:
                 std::cout << "invalid control state: " << state << std::endl;
@@ -696,11 +709,13 @@ GridLightController::GridLightController( const std::vector<Goal*>& goals, const
 
     PreprocessLayers(goals);
     SeeLayerDistribution();
+    currentLayer = maxLayer;
+    std::cout << "Max Layer: " << maxLayer << "\n";
     for( int i = 0; i < layersActive; ++i ){
         Toggle(currentLayer);
         currentLayer = NextLayer(currentLayer);
     }
-    currentLayer = dimGrid-1;
+    currentLayer = maxLayer;
 }
 
 // RETURN: index of n-bour if exists otherwise index of cell 
@@ -721,6 +736,7 @@ int GridLightController::NeighbourIndex( int cell[2], neighbour_t n ){
 
 // NOTE: processed cells are marked by turning the light ON!
 void GridLightController::PreprocessLayers( const std::vector<Goal*>& goals ){
+    int localMaxLayer = 0;
     for( int layer = 0; layer < dimGrid; ++layer ){
         std::vector<int> newLayer;
         layerIndicies.push_back(newLayer);
@@ -753,8 +769,11 @@ void GridLightController::PreprocessLayers( const std::vector<Goal*>& goals ){
         } 
     }
     for( auto light: lights ){
+        if( light->layer > localMaxLayer )
+            localMaxLayer = light->layer;
         light->on = false;
     }
+    maxLayer = localMaxLayer;
 }
 
 void GridLightController::MarkQuadrants( bool quadrants[8], neighbour_t n ){
@@ -825,8 +844,20 @@ void GridLightController::AddLayerIndicies( int layer, int cell[2], neighbour_t 
     }
 }
 
-bool GridLightController::NoBoxOutside( int layer, const std::vector<Box*>& boxes ){
-    return false;
+bool GridLightController::NoBoxOutside( const std::vector<Box*>& boxes ){
+    int lightIndex, layer;
+    int cell[2];
+    for( Box* box : boxes ){
+        b2Vec2 boxCenter = box->GetCenter();
+        PointInCell( boxCenter.x, boxCenter.y, cell );
+        lightIndex = RowColToIndex( cell[0], cell[1] );
+        layer = lights[lightIndex]->layer;
+        if( lightIndex >= 0 and layer-1 >= currentLayer-layersActive ){
+            std::cout << "Row: " << cell[0] << " Col: " << cell[1] << " lightIndex: " << layer << " currentLayer: " << currentLayer << "\n"; 
+            return false;
+        } 
+    }
+    return true;
 }
 
 void GridLightController::SeeLayerDistribution( void ){
@@ -847,6 +878,27 @@ void GridLightController::Toggle( int layer ){
     } else {
         Toggle( layer+dimGrid-1 ); // Modular arithmetics
     }
+}
+
+void GridLightController::TurnOffAllLights( void ){
+    for( Light* light : lights ){
+        light->on = false;
+    }
+}
+
+bool GridLightController::GoalObtained( const std::vector<Box*>& boxes, const std::vector<Goal*>& goals ){
+    bool goalFilled = false;
+    for( Goal* goal : goals ){
+        for ( Box* box : boxes ){
+            // TODO: check which GetCenter() is called
+            if( sqrt(box->SqrDistanceTo(*goal)) < goalError )
+                goalFilled = true;
+        }
+        if( not goalFilled )
+            return false;
+        goalFilled = false;
+    }
+    return true;
 }
 
 float GridLightController::GetIntensity( float x, float y ){
@@ -882,12 +934,14 @@ void GridLightController::Update( const std::vector<Goal*>& goals, const std::ve
         timeElapsed = 0;
         // std::cout << "(GLC) Changing lights configuration... \n";
         // Check that all boxes in shadow region
-        // if( NoBoxesInLayer(goals, boxes) ){
-            //std::cout << "Current Layer: " << currentLayer << std::endl;
+        if( GoalObtained(boxes, goals) ){
+            std::cout << "[GLC] Goal Obtained!\n";
+            TurnOffAllLights();
+        } else if( NoBoxOutside(boxes) ){
             Toggle(currentLayer); 
             Toggle(currentLayer-layersActive);
             currentLayer = NextLayer(currentLayer); 
-        //}
+        }
     }
 }
 // ===> END GRIDLIGHTCONTROLLER clas methods

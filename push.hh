@@ -54,13 +54,16 @@ class WorldObject {
     public:
         WorldObject( float x, float y ) : center( b2Vec2(x,y) ){}
         WorldObject( b2Vec2 center ): center( center ){}
-        float SqrDistanceTo( const WorldObject& other ){
-            return pow(center.x-other.center.x,2.0) + pow(center.y-other.center.y,2.0);
+        float SqrDistanceTo( WorldObject& other ){
+            b2Vec2 otherCenter = other.GetCenter();
+            b2Vec2 myCenter = GetCenter();
+            return pow(myCenter.x-otherCenter.x,2.0) + pow(myCenter.y-otherCenter.y,2.0);
         }
         float SqrDistanceTo( float x, float y ){
-            return pow(center.x-x,2.0) + pow(center.y-y,2.0);
+            b2Vec2 myCenter = GetCenter();
+            return pow(myCenter.x-x,2.0) + pow(myCenter.y-y,2.0);
         }
-        b2Vec2 GetCenter( void ){ return center; }
+        virtual b2Vec2 GetCenter( void ){ return center; }
         virtual void Draw( void ) = 0;
 }; // END WorldObject class
 
@@ -152,11 +155,13 @@ class Pusher : public Robot {
             S_BACKUP_LONG,
             S_BACKUP_SHORT,
             S_TURN,
+            S_DEAD,
             S_COUNT
         } control_state_t;
 
         static const float PUSH, BACKUP, TURNMAX;
         static const float SPEEDX, SPEEDA;
+        static const float DEAD;
         static const float maxspeedx, maxspeeda;
 
         float timeleft;
@@ -219,7 +224,7 @@ class RadialLightController: public LightController {
 class GridLightController : public LightController {
     private:
         float dimWorld, dimCell, trialTime, timeElapsed;
-        int dimGrid, layersActive, currentLayer;
+        int dimGrid, maxLayer, layersActive, currentLayer;
         std::vector< std::vector<int> > layerIndicies;
 
         int RowColToIndex( int row, int col ){
@@ -248,12 +253,14 @@ class GridLightController : public LightController {
         }
 
         int NeighbourIndex( int cell[2], neighbour_t n );
-        bool NoBoxOutside( int layer, const std::vector<Box*>& boxes );
+        bool NoBoxOutside( const std::vector<Box*>& boxes );
         void PreprocessLayers( const std::vector<Goal*>& goals );
         void MarkQuadrants( bool quadrants[8], neighbour_t n );
         void AddLayerIndicies( int layer, int cell[2], neighbour_t n );
         void Toggle( int layer );
         void SeeLayerDistribution( void );
+        void TurnOffAllLights( void );
+        bool GoalObtained( const std::vector<Box*>& boxes, const std::vector<Goal*>& goals );
 
     public:
         GridLightController( const std::vector<Goal*>& goals, const std::vector<float>& settings, float avoidIntensity, float bufferIntensity, float cellWidth );

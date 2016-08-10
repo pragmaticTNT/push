@@ -11,7 +11,7 @@
 # (LAST) numPatterns: INT(size_t)
 # Goals are row by column and are zero-indexed
 #TYPE	width	height	boxNum	boxRad	goalErr	time	dimGrid numPattern
-	    10 	    10 	    10 	    0.75 	0.2 	200 	11	1
+	    10 	    10 	    10 	    0.8 	0.2 	500 	11	1
 
 #0 0
 #10 10
