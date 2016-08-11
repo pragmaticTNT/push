@@ -21,11 +21,9 @@ static struct option longopts[] = {
 };
 
 int main( int argc, char* argv[] ){
-    float WIDTH = 5;
-    float HEIGHT = 5;
-    size_t ROBOTS = 16;
-    size_t BOXES = 128;
-    std::string goalFile = "goals.txt";
+    float WIDTH = 5, HEIGHT = 5;
+    int ROBOTS = 20, BOXES = 10;
+    std::string goalFile;
     float32 timeStep = 1.0 / 30.0;
 
     int ch=0, optindex=0;  
@@ -58,8 +56,10 @@ int main( int argc, char* argv[] ){
                 exit(0);
         }
     }
+    GuiWorld world = argc < 4 and argc > 1 ? 
+        GuiWorld( "patterns/" + goalFile ) :
+        GuiWorld( WIDTH, HEIGHT, ROBOTS, BOXES, SHAPE_CIRC );
 
-    GuiWorld world( WIDTH, HEIGHT, Robot::size, ROBOTS, BOXES, "patterns/" + goalFile );
     /* Loop until the user closes the window */
     while( !world.RequestShutdown() ) {
         world.Step( timeStep );

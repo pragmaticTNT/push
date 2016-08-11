@@ -1,23 +1,27 @@
-# This is the "k" template for the grid light controller
-# First line is the settings:
-# (0) lightControllerType: RADIAL or GRID (proper capitalization please)
-# (1) width: FLOAT(+ve)
-# (2) height: FLOAT(+ve)
-# (3) boxNum: INT(size_t)
-# (4) boxRadius: FLOAT(+ve)
-# (5) goalError: FLOAT(+ve)
-# (6) trialTime: FLOAT(+ve)
-# (7) dimGrid: INT(size_t) number of grids per row and column (mxm)
-# (LAST) numPatterns: INT(size_t)
-# Goals are row by column and are zero-indexed
-#TYPE	width	height	boxNum	boxRad	goalErr	time	dimGrid numPattern
-	    10 	    10 	    10 	    0.8 	0.2 	500 	11	1
-
-#0 0
-#10 10
-#10 0
-#5 5
-#0 10
+# ==============================
+# ===> [GLC] SHAPE-template <===
+# ==============================
+# Latest Revision: 10 AUG 2016
+# 
+# ===> Fields <================================================================
+# | (1) lightControllerType: [G]RID 
+# | (2) width (FLOAT+ve): width of experiment world
+# | (3) height (FLOAT+ve): height of experiment world
+# G (4) boxNum (UNSIGNED INT): number of boxes 
+# | (5) boxRadius (FLOAT+ve): for square boxes this is half the side length
+# | (6) boxShape (box_shape_t): [C]ircle, [S]quare, [H]exagon
+# | (7) robotNum (UNSIGNED INT): number of robots
+# | (8) robotRadius (FLOAT+ve): half the side length of a robot
+#
+# | (9) patternNum (UNSIGNED INT): numer of patters (OUT OF SERVICE) 
+# L (10) goalError (FLOAT+ve): acceptable error of boxes from the goal
+# | (11) trialTime (FLOAT+ve): interval to change the light behaviour
+#
+# [GLC] (12) dimGrid (INT): number of grids per row and column (mxm)
+# =============================================================================
+#
+#(1)   (2)   (3)   (4)   (5)   (6)   (7)   (8)   (9)   (10)   (11)   (12)
+G    10    10    10    0.8   C     20    0.25  1     0.2     500 	11	  
 
 3 4
 4 4

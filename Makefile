@@ -10,7 +10,7 @@ LDFLAGS = `pkg-config --static --libs glfw3 box2d` -lGL
 # CCFLAGS = -g -O3 -I /usr/local/include -framework OpenGL
 # LDFLAGS = -L/usr/local/lib -l glfw3 -lbox2d
 
-SRC = main.cc push.cc gui.cc
+SRC = main.cc push.cc world.cc lightController.cc worldObject.cc
 HDR = push.hh
 
 all: push
