@@ -3,9 +3,10 @@
 #include "push.hh"
 
 // ===> LIGHTCONTROLLER class methods
-LightController::LightController( float avoidIntensity, float bufferIntensity, float radiusSmall ) : 
-    avoidIntensity( avoidIntensity ),
-    bufferIntensity( bufferIntensity ),
+LightController::LightController( float avoidLuminance, float bufferLuminance,
+        float radiusSmall ) : 
+    avoidLuminance( avoidLuminance ),
+    bufferLuminance( bufferLuminance ),
     radiusSmall(radiusSmall),
     scaleFactor(GetScaleFactor(radiusSmall)),
     radiusLarge(GetRadiusLarge()),
@@ -24,8 +25,13 @@ LightController::~LightController(){
 
 
 // ===> RADIALLIGHTCONTROLLER class methods
-RadialLightController::RadialLightController( const std::vector<Goal*>& goals, std::queue<std::string>& settings, float avoidIntensity, float bufferIntensity, float radiusSmall ) :
-    LightController( avoidIntensity, bufferIntensity, radiusSmall ),
+RadialLightController::RadialLightController( 
+        const std::vector<Goal*>& goals, 
+        const std::deque<std::string>& settings, 
+        float avoidLuminance, 
+        float bufferLuminance, 
+        float radiusSmall ) :
+    LightController( avoidLuminance, bufferLuminance, radiusSmall ),
     radiusInit(radiusSmall),
     growRate(0),
     timeElapsed(0),
@@ -36,41 +42,42 @@ RadialLightController::RadialLightController( const std::vector<Goal*>& goals, s
     size_t numParams = settings.size();
     
     // When in doubt check the most recent pattern file
-    goalError = numParams > 0 ? std::stof(settings.front()) : 0.2;
-    settings.pop();
-    trialTime = numParams > 1 ? std::stof(settings.front()) : 2000;
-    settings.pop();
-    growRate = numParams > 2 ? std::stof(settings.front()) : -10e-4;
-    settings.pop();
-    //TODO: fix this rather annoying hack
-    patternTime = numParams > 3 ? std::stof(settings.front()) : 0;
-    repeatPattern = numParams > 4 ? std::stoi(settings.back()) == 1 : false;
+    goalError = numParams > 0 ? std::stof(settings[0]) : 0.2;
+    trialTime = numParams > 1 ? std::stof(settings[1]) : 2000;
+    growRate = numParams > 2 ? std::stof(settings[2]) : -10e-4;
+    patternTime = numParams > 3 ? std::stof(settings[3]) : 0;
+    repeatPattern = numParams > 4 ? std::stoi(settings[4]) == 1 : false;
     for( auto goal : goals ){
         lights.push_back( new Light(goal->GetCenter()) );
     } 
 }
 
-float RadialLightController::UpdateGoalsInfo( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes ){
+float RadialLightController::UpdateGoalsInfo( const std::vector<Goal*>& goals, 
+        const std::vector<Box*>& boxes ){
+    float dist;
     float minAmongBoxes = INT_MAX, maxAmongGoals = 0;
-    for( Goal* goal: goals )
+
+    for( Goal* goal: goals ){
         goal->GetCenter();
-    for( Box* box : boxes ){
-        box->GetCenter();
-        minAmongBoxes = INT_MAX;
-        for( Goal* goal : goals ){
-            float dist = sqrt(box->SqrDistanceTo(*goal));
-            minAmongBoxes = std::min(minAmongBoxes, dist);
-            goal->filled = dist < goalError;
+        for( Box* box : boxes ){
+            box->GetCenter();
+            minAmongBoxes = INT_MAX;
+            for( Goal* goal : goals ){
+                dist = sqrt(box->SqrDistanceTo(*goal));
+                minAmongBoxes = std::min(minAmongBoxes, dist);
+                goal->filled = dist < goalError;
+            }
+            maxAmongGoals = std::max(maxAmongGoals, minAmongBoxes);
         }
-        maxAmongGoals = std::max(maxAmongGoals, minAmongBoxes);
     }
+
     return maxAmongGoals;
 }
 
 float RadialLightController::GetIntensity( float x, float y ){
-    float brightness = 1.0;
+    float intensity, brightness = 1.0;
     for( auto light : lights ){
-        float intensity = light->GetIntensity(x, y, scaleFactor);
+        intensity = light->GetIntensity(x, y, scaleFactor);
         brightness = std::min(brightness, intensity);
         //brightness *= 1-1.0/(1+scaleFactor*(light->SqrDistanceTo(x,y)));
     }
@@ -82,14 +89,17 @@ void RadialLightController::Update(
         const std::vector<Goal*>& goals,
         const std::vector<Box*>& boxes)
 { 
+    float distBoxToGoal, x, y;
+    b2Vec2 goal, box;
+
     for( int i=0; i<std::min(goals.size(),boxes.size()); ++i ){
-        b2Vec2 goal = goals[i]->GetCenter();
-        b2Vec2 box = boxes[i]->GetCenter();
-        float distBoxToGoal = sqrt(boxes[i]->SqrDistanceTo(*goals[i]));
+        goal = goals[i]->GetCenter();
+        box = boxes[i]->GetCenter();
+        distBoxToGoal = sqrt(boxes[i]->SqrDistanceTo(*goals[i]));
 
         if(distBoxToGoal > goalError){
-            float x = (goal.x-box.x)*radiusSmall/distBoxToGoal + box.x;
-            float y = (goal.y-box.y)*(x-box.x)/(goal.x-box.x) + box.y;
+            x = (goal.x-box.x)*radiusSmall/distBoxToGoal + box.x;
+            y = (goal.y-box.y)*(x-box.x)/(goal.x-box.x) + box.y;
             lights[i]->SetCenter(x,y);
         } else {
             goals[i]->filled = true;
@@ -103,8 +113,10 @@ void RadialLightController::Update(
 }
 
 // -> Light centered at the goal slowly diminishing
-void RadialLightController::Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep ){
+void RadialLightController::Update( const std::vector<Goal*>& goals, 
+        const std::vector<Box*>& boxes, float timeStep ){
     timeElapsed += timeStep;
+
     if( !scramble ){
         if( fabs(maxRadius) > EPSILON )
             maxRadius = UpdateGoalsInfo( goals, boxes );
@@ -124,7 +136,7 @@ void RadialLightController::Update( const std::vector<Goal*>& goals, const std::
                 if( !startScramble ){
                     startScramble = true;
                 } else if ( !scramble ){
-                    std::cout << "Local minimum reached. Scrambling..." << std::endl;
+                    std::cout << "Local minimum reached. Scrambling...\n";
                     scramble = true; 
                     Light::radiusSmall = 0;
                     Light::radiusLarge = 0;
@@ -144,10 +156,15 @@ void RadialLightController::Update( const std::vector<Goal*>& goals, const std::
 
 
 // ===> GRID LIGHT CONTROLLER class methods
-GridLightController::GridLightController( const std::vector<Goal*>& goals, std::queue<std::string>& settings, float avoidIntensity, float bufferIntensity, float cellWidth ) : 
+GridLightController::GridLightController( 
+        const std::vector<Goal*>& goals, 
+        const std::deque<std::string>& settings, 
+        float avoidLuminance, 
+        float bufferLuminance, 
+        float cellWidth ) : 
     LightController( 
-            avoidIntensity, 
-            bufferIntensity, 
+            avoidLuminance, 
+            bufferLuminance, 
             cellWidth*sqrt(2)/2.0 ),
     dimCell(cellWidth),
     timeElapsed(0)
@@ -155,12 +172,9 @@ GridLightController::GridLightController( const std::vector<Goal*>& goals, std::
     int goalIndex;
     size_t numParams = settings.size();
 
-    goalError = numParams > 0 ? std::stof(settings.front()) : 0.2;
-    settings.pop();
-    trialTime = numParams > 1 ? std::stof(settings.front()) : 500;
-    settings.pop();
-    dimGrid = numParams > 2 ? std::stoi(settings.front()) : 11;
-    settings.pop();
+    goalError = numParams > 0 ? std::stof(settings[0]) : 0.2;
+    trialTime = numParams > 1 ? std::stof(settings[1]) : 500;
+    dimGrid = numParams > 2 ? std::stoi(settings[2]) : 11;
     layersActive = 4;
     currentLayer = dimGrid-1;
     
@@ -176,7 +190,8 @@ GridLightController::GridLightController( const std::vector<Goal*>& goals, std::
     }
 
     PreprocessLayers(goals);
-    SeeLayerDistribution();
+    PrintLayerDistribution();
+
     currentLayer = maxLayer;
     std::cout << "Max Layer: " << maxLayer << "\n";
     for( int i = 0; i < layersActive; ++i ){
@@ -273,7 +288,8 @@ void GridLightController::MarkQuadrants( bool quadrants[8], neighbour_t n ){
     }
 }
 
-void GridLightController::AddLayerIndicies( int layer, int cell[2], neighbour_t n ){
+void GridLightController::AddLayerIndicies( int layer, int cell[2], 
+        neighbour_t n ){
     bool oneCell = true;
     int rowMod = 0, colMod = 0, index = 0;
 
@@ -315,20 +331,22 @@ void GridLightController::AddLayerIndicies( int layer, int cell[2], neighbour_t 
 bool GridLightController::NoBoxOutside( const std::vector<Box*>& boxes ){
     int lightIndex, layer;
     int cell[2];
+
     for( Box* box : boxes ){
         b2Vec2 boxCenter = box->GetCenter();
         PointInCell( boxCenter.x, boxCenter.y, cell );
         lightIndex = RowColToIndex( cell[0], cell[1] );
         layer = lights[lightIndex]->layer;
         if( lightIndex >= 0 and layer-1 >= currentLayer-layersActive ){
-            std::cout << "Row: " << cell[0] << " Col: " << cell[1] << " lightIndex: " << layer << " currentLayer: " << currentLayer << "\n"; 
+            // printf("Row: %.4f Col: %.4f Layer: %i CurrentLayer: %i\n", 
+            //         cell[0], cell[1], layer, currentLayer);
             return false;
         } 
     }
     return true;
 }
 
-void GridLightController::SeeLayerDistribution( void ){
+void GridLightController::PrintLayerDistribution( void ){
     std::cout << "\n";
     for( int row = dimGrid-1; row >= 0; --row ){
         for( int col = 0; col < dimGrid; ++col )
@@ -354,11 +372,11 @@ void GridLightController::TurnOffAllLights( void ){
     }
 }
 
-bool GridLightController::GoalObtained( const std::vector<Box*>& boxes, const std::vector<Goal*>& goals ){
+bool GridLightController::GoalObtained( const std::vector<Box*>& boxes, 
+        const std::vector<Goal*>& goals ){
     bool goalFilled = false;
     for( Goal* goal : goals ){
         for ( Box* box : boxes ){
-            // TODO: check which GetCenter() is called
             if( sqrt(box->SqrDistanceTo(*goal)) < goalError )
                 goalFilled = true;
         }
@@ -378,7 +396,7 @@ float GridLightController::GetIntensity( float x, float y ){
     PointInCell( x, y, cell );
     int cellIndex = RowColToIndex(cell[0], cell[1]);
 
-    // std::cout << "row: " << cell[0] << " col: " << cell[1] << " index: " << cellIndex << std::endl;
+    // printf("Row: %.4f Col: %.4f Index: %i\n", cell[0], cell[1], cellIndex);
     if( cellIndex >= 0 ){
         cells.push_back(lights[cellIndex]->GetIntensity(x,y,scaleFactor));
 
@@ -396,7 +414,8 @@ float GridLightController::GetIntensity( float x, float y ){
     }
 }
 
-void GridLightController::Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep ){
+void GridLightController::Update( const std::vector<Goal*>& goals, 
+        const std::vector<Box*>& boxes, float timeStep ){
     timeElapsed += timeStep;
     if( timeElapsed > trialTime ){
         timeElapsed = 0;

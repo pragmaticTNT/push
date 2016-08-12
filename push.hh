@@ -1,8 +1,10 @@
 #ifndef PUSH_H
 #define PUSH_H
 
+#include <stdio.h>
+
 #include <math.h>
-#include <queue>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -20,11 +22,13 @@ typedef enum {
 
 class World;
 
-class WorldObject {
+// Abstract Class: pure virtual function Draw
+class WorldObject{ 
     protected:
         b2Vec2 center;
         void WhereAmI( std::string objectType ){
-            std::cout << objectType << ": (" << center.x << "," << center.y << ")" << std::endl;
+            std::cout << objectType << 
+                ": (" << center.x << "," << center.y << ")" << std::endl;
         }
         void DrawDisk( b2Vec2 center, float radius );
         void DrawCircle( b2Vec2 center, float radius );
@@ -36,7 +40,8 @@ class WorldObject {
         float SqrDistanceTo( WorldObject& other ){
             b2Vec2 otherCenter = other.GetCenter();
             b2Vec2 myCenter = GetCenter();
-            return pow(myCenter.x-otherCenter.x,2.0) + pow(myCenter.y-otherCenter.y,2.0);
+            return pow(myCenter.x-otherCenter.x,2.0) + 
+                   pow(myCenter.y-otherCenter.y,2.0);
         }
         float SqrDistanceTo( float x, float y ){
             b2Vec2 myCenter = GetCenter();
@@ -53,7 +58,7 @@ class Box : public WorldObject {
         
         Box( World& world, float spawnDist, box_shape_t shape = SHAPE_CIRC );
         b2Vec2 GetCenter( void ){
-            center = (body->GetWorldCenter());
+            center = body->GetWorldCenter();
             return center;
         }
         void WhereAmI( void ){ WorldObject::WhereAmI("Box"); }
@@ -62,11 +67,12 @@ class Box : public WorldObject {
 
 class Goal : public WorldObject {
     public:
-        int index;
-        float radius;  // r: circle radius or sidelen/2 for square
         bool filled;
+        int index;  // WRT to the lights in the Grid Light Controller
+        float radius;
 
-        Goal( float x, float y, float radius, int index = 0 ) : WorldObject(x,y), radius(radius), filled(false), index(index){}
+        Goal( float x, float y, float size, int index = 0 ) : 
+            WorldObject(x,y), radius(size/2), filled(false), index(index){}
         ~Goal(){}
         void WhereAmI( void ){ WorldObject::WhereAmI("Goal"); }
         void Draw( void );
@@ -78,8 +84,10 @@ class Light : public WorldObject {
         int layer;
         bool on, atGoal;
 
-        Light( float x, float y ) : WorldObject(x,y), on(false), atGoal(false), layer(0){}
-        Light( b2Vec2 center ) : WorldObject(center), on(false), atGoal(false), layer(0){}
+        Light( float x, float y ) : 
+            WorldObject(x,y), on(false), atGoal(false), layer(0){}
+        Light( b2Vec2 center ) : 
+            WorldObject(center), on(false), atGoal(false), layer(0){}
         ~Light(){}
 
         float GetIntensity( float x, float y, float scaleFactor ){
@@ -92,12 +100,13 @@ class Light : public WorldObject {
         void Draw( void );
 }; // END Light class
 
-class Robot : public WorldObject{
+// Abstract Class: pure virtual function Update
+class Robot : public WorldObject{ 
     protected:
+        float luminance;
+
         // get sensor data
-        bool isBumperPressed( void );
-        float lightIntensity;
-        
+        bool isBumperPressed( void ); 
         // send commands
         void SetSpeed( float x, float y, float angle );
 
@@ -147,15 +156,14 @@ class Pusher : public Robot {
         int turnRight;
 
     public:
-    // constructor
-    Pusher( World& world, float spawnDist );
-    void Update( float timestep, World& world );
+        Pusher( World& world, float spawnDist );
+        void Update( float timestep, World& world );
 }; // END Pusher class
 
 class LightController {
     protected:
-        float avoidIntensity;   
-        float bufferIntensity;  
+        float avoidLuminance;   
+        float bufferLuminance;  
 
         // -> Intensity Related
         float scaleFactor;          // ORDER DEPENDENCY 
@@ -167,20 +175,22 @@ class LightController {
         bool isFilled;
 
         float GetScaleFactor( float radius ){
-            return ((1.0/(1-avoidIntensity))-1)/pow(radius,2.0);
+            return ((1.0/(1-avoidLuminance))-1)/pow(radius,2.0);
         }
         float GetRadiusLarge(){
-            return sqrt(((1.0/(1-bufferIntensity))-1)/scaleFactor);
+            return sqrt(((1.0/(1-bufferLuminance))-1)/scaleFactor);
         }
 
     public:
         std::vector<Light*> lights;
         
-        LightController( float avoidIntensity, float bufferIntensity, float radiusSmall );
+        LightController( float avoidLuminance, float bufferLuminance,
+                float radiusSmall );
         ~LightController();
         
         virtual float GetIntensity( float x, float y ){ return 1.0; }
-        virtual void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep ){}
+        virtual void Update( const std::vector<Goal*>& goals, 
+                const std::vector<Box*>& boxes, float timeStep ){}
 }; // END LightController Class
 
 class RadialLightController: public LightController {
@@ -189,21 +199,37 @@ class RadialLightController: public LightController {
         float growRate, trialTime, patternTime, maxRadius;
         bool repeatPattern, startScramble, scramble;
 
-        float UpdateGoalsInfo( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes );
+        float UpdateGoalsInfo( const std::vector<Goal*>& goals, 
+                const std::vector<Box*>& boxes );
 
     public:
-        RadialLightController( const std::vector<Goal*>& goals, std::queue<std::string>& settings, float avoidIntensity = 0.2, float bufferIntensity = 0.4, float radiusSmall = 0.5);
+        RadialLightController( 
+                const std::vector<Goal*>& goals, 
+                const std::deque<std::string>& settings, 
+                float avoidLuminance = 0.2, 
+                float bufferLuminance = 0.4, 
+                float radiusSmall = 0.5
+                );
         float GetIntensity( float x, float y );
-        void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes );
-        void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep );
+        void Update( const std::vector<Goal*>& goals, 
+                const std::vector<Box*>& boxes );
+        void Update( const std::vector<Goal*>& goals, 
+                const std::vector<Box*>& boxes, float timeStep );
 }; // END RadialLightController class 
 
 class GridLightController : public LightController {
-    private:
-        float dimCell, trialTime, timeElapsed;
-        int dimGrid, maxLayer, layersActive, currentLayer;
-        std::vector< std::vector<int> > layerIndicies;
+    public:
+        GridLightController( 
+                const std::vector<Goal*>& goals, 
+                const std::deque<std::string>& settings, 
+                float avoidLuminance, 
+                float bufferLuminance, 
+                float cellWidth );
+        float GetIntensity( float x, float y );
+        void Update( const std::vector<Goal*>& goals, 
+                const std::vector<Box*>& boxes, float timeStep );
 
+    private:
         /***
          *  Enumerates all the neighbours of the cell CC.
          *  Letters specifies the position of the n-bour cell:
@@ -222,6 +248,11 @@ class GridLightController : public LightController {
            TR=0, TC, TL, CL, BL, BC, BR, CR, NBOUR_NUM
         } neighbour_t;
 
+        float dimCell, trialTime, timeElapsed;
+        int dimGrid, maxLayer, layersActive, currentLayer;
+        std::vector< std::vector<int> > layerIndicies;
+
+        // Member functions related to grid element access
         int RowColToIndex( int row, int col ){
             // ASSERT: 0 <= index <= dimGric -1
             return 
@@ -246,32 +277,42 @@ class GridLightController : public LightController {
         int NextLayer( int now ){
             return now > 1 ? now-1 : dimGrid-1; 
         }
-
         int NeighbourIndex( int cell[2], neighbour_t n );
-        bool NoBoxOutside( const std::vector<Box*>& boxes );
+
+        // Member functions related to update
         void PreprocessLayers( const std::vector<Goal*>& goals );
         void MarkQuadrants( bool quadrants[8], neighbour_t n );
         void AddLayerIndicies( int layer, int cell[2], neighbour_t n );
         void Toggle( int layer );
-        void SeeLayerDistribution( void );
         void TurnOffAllLights( void );
-        bool GoalObtained( const std::vector<Box*>& boxes, const std::vector<Goal*>& goals );
-
-    public:
-        GridLightController( const std::vector<Goal*>& goals, std::queue<std::string>& settings, float avoidIntensity, float bufferIntensity, float cellWidth );
-        float GetIntensity( float x, float y );
-        void Update( const std::vector<Goal*>& goals, const std::vector<Box*>& boxes, float timeStep );
+        bool NoBoxOutside( const std::vector<Box*>& boxes );
+        void PrintLayerDistribution( void );
+        bool GoalObtained( const std::vector<Box*>& boxes, 
+                const std::vector<Goal*>& goals );
 }; // END GridLightController class
 
 class World {
-    private:
+    public:  
         typedef enum {
             LC_RADIAL=0,
             LC_GRID
         } light_controller_t;
 
+        b2World* b2world;
+        float width, height;
+        float avoidLuminance, bufferLuminance;
+
+        World( float width, float height, int robotNum, int boxNum,
+                box_shape_t boxShape = SHAPE_CIRC );
+        World( const std::string& goalFile );
+        ~World();
+        float GetLuminance( const b2Vec2& here );
+        void Step( float timestep );
+
     protected:
-        int numPatterns;
+        int numPatterns, numBoxes, numRobots;
+        light_controller_t controllerType;
+        box_shape_t boxShape;
         // std::vector<std::vector<Goal*> > goalList;
         std::vector<Goal*> goals;
         std::vector<Box*> boxes;
@@ -279,21 +320,12 @@ class World {
         std::vector<Wall*> groundBody;    // Boundary
         LightController* lightController;
 
-        void ParseFile( const std::string& goalFile, std::queue<std::string>& settings );
+        void ParseFile( const std::string& goalFile, 
+                std::deque<std::string>& settings );
+        int ParseSettings( const std::deque<std::string>& settings );
         void AddBoundary( void );
         void AddRobots( int numRobots );
         void AddBoxes( int numBoxes, box_shape_t shape );
-
-    public:  
-        b2World* b2world;
-        float width, height;
-        float lightAvoidIntensity, lightBufferIntensity; // Small and Large circle radii respectively 
-
-        World( float width, float height, int robotNum, int boxNum, box_shape_t boxShape = SHAPE_CIRC );
-        World( const std::string& goalFile );
-        ~World();
-        float GetLightIntensity ( const b2Vec2& here );
-        void Step( float timestep );
 }; // END World class
 
 class GuiWorld : public World {
@@ -307,7 +339,8 @@ class GuiWorld : public World {
         GLFWwindow* window;
         int draw_interval;
 
-        GuiWorld( float width, float height, int numRobots, int numBoxes, box_shape_t boxShape = SHAPE_CIRC );
+        GuiWorld( float width, float height, int numRobots, 
+                int numBoxes, box_shape_t boxShape = SHAPE_CIRC );
         GuiWorld( const std::string& goalFile );
         ~GuiWorld();
         void Step( float timestep );

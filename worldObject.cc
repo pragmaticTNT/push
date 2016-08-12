@@ -44,7 +44,8 @@ void WorldObject::DrawDisk( b2Vec2 center, float radius ) {
                 x = c * x - s * y;
                 y = s * t + c * y;
             }
-        glVertex2f( radius+center.x, 0+center.y ); // first point again to close disk
+        // first point again to close disk
+        glVertex2f( radius+center.x, 0+center.y ); 
         glEnd();
     }
 }
@@ -83,14 +84,14 @@ void WorldObject::DrawBody( b2Body* b, const float color[3] ) {
                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL );
                 glBegin( GL_POLYGON );	
                 for( int i = 0; i < count; i++ ){
-                    const b2Vec2 w = b->GetWorldPoint( poly->GetVertex( i ));		
+                    const b2Vec2 w = b->GetWorldPoint( poly->GetVertex( i ));	
                     glVertex2f( w.x, w.y );
                 }
-                glEnd();		  
+                glEnd(); 
 
                 glLineWidth( 3.0 );
                 // glColor3f( color[0]/5, color[1]/5, color[2]/5 );
-                // // TODO: this line in particular is related to the circles not being properly filled in... I wonder why
+                // // TODO: below makes circles not being properly filled in
                 // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                 // glBegin( GL_POLYGON );	
                 // for( int i = 0; i < count; i++ ){
@@ -117,7 +118,7 @@ Wall::Wall( b2Body* body, b2Vec3& dim ) :
     if (body){
         body->SetTransform( b2Vec2( dim.x, dim.y ), dim.z );
     } else {
-        std::cout << "[ERR] WALL: body parameter is NULL.";
+        std::cout << "[ERR-Wall] body parameter is NULL.\n";
     }
 }
 
@@ -180,7 +181,9 @@ Box::Box( World& world, float spawnDist, box_shape_t shape ) :
     body = world.b2world->CreateBody(&bodyDef);    
     body->SetLinearDamping( 10.0 );
     body->SetAngularDamping( 10.0 );
-    body->SetTransform( b2Vec2( drand48()*(world.width-2*spawnDist) + spawnDist, drand48()*(world.height-2*spawnDist) + spawnDist ), 0 ); 
+    body->SetTransform( b2Vec2(
+                drand48()*(world.width-2*spawnDist) + spawnDist, 
+                drand48()*(world.height-2*spawnDist) + spawnDist), 0 ); 
       
     body->CreateFixture(&fixtureDef);
     center = (body->GetWorldCenter());

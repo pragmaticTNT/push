@@ -12,94 +12,54 @@ bool GuiWorld::step = false;
 int GuiWorld::skip = 1;
 
 // ===> WORLD class methods
-World::World( float width, float height, int robotNum, int boxNum, box_shape_t boxShape ) :
+World::World( float width, float height, int robotNum, int boxNum, 
+        box_shape_t boxShape ) :
     width(width),
     height(height),
-    lightAvoidIntensity(0.2),
-    lightBufferIntensity(0.4),
+    avoidLuminance(0.2),
+    bufferLuminance(0.4),
     lightController(NULL),
     b2world( new b2World( b2Vec2( 0,0 )) ) // gravity 
 {
     AddBoundary();
     AddRobots(robotNum);
     AddBoxes(boxNum, boxShape);
-    lightController = new LightController( lightAvoidIntensity, lightBufferIntensity, 1.0);
+    lightController = new LightController( 
+            avoidLuminance, bufferLuminance, 1.0);
 }
 
 World::World( const std::string& goalFile ):
     width(0),
     height(0),
-    lightAvoidIntensity(0.2),
-    lightBufferIntensity(0.4),
+    avoidLuminance(0.2),
+    bufferLuminance(0.4),
     lightController(NULL),
     b2world( new b2World( b2Vec2( 0,0 )) )
 {
-    std::queue<std::string> settings;
-    int numBoxes, numRobots;
+    std::deque<std::string> settings;
     float cellWidth;
-    light_controller_t controllerType;
-    box_shape_t boxShape;
 
     ParseFile(goalFile, settings);     // modify settings & adds goals
-
-    switch(settings.front().c_str()[0]){
-        case 'R': case 'r':
-            controllerType = LC_RADIAL;
-            break;
-        case 'G': case 'g':
-            controllerType = LC_GRID;
-            break;
-        default:
-            std::cout << "[ERR-W] invalid lightcontroller type: " << settings.front() << "\n";
-            exit(1);
-    }
-    settings.pop();
-    width = std::stof(settings.front());
-    settings.pop();
-    height = std::stof(settings.front());
-    settings.pop();
-    numBoxes = std::stoi(settings.front());
-    settings.pop();
-    Box::size = std::stof(settings.front());
-    settings.pop();
-    switch(settings.front().c_str()[0]){
-        case 'C': case 'c':
-            boxShape = SHAPE_CIRC;
-            break;
-        case 'S': case 's':
-            boxShape = SHAPE_RECT;
-            break;
-        case 'H': case 'h':
-            boxShape = SHAPE_HEX;
-            break;
-        default:
-            std::cout << "[ERR-W] invalid box shape: " << settings.front() << "\n";
-            exit(1);
-    }
-    settings.pop();
-    numRobots = std::stoi(settings.front());
-    settings.pop();
-    Robot::size = std::stof(settings.front());
-    settings.pop();
-    numPatterns = std::stoi(settings.front());
-    settings.pop();
 
     AddBoundary();
     AddRobots(numRobots);
     AddBoxes(numBoxes, boxShape);
-    std::cout << "Starting " << width << "x" << height << " World... robots: " << numRobots << " boxes: " << numBoxes << "\n";
+    printf("Starting %.4fx%.4f world. Robots: %i Boxes: %i\n", 
+            width, height, numRobots, numBoxes);
     
     switch( controllerType ){
         case LC_RADIAL:
-            lightController = new RadialLightController(goals, settings, lightAvoidIntensity, lightBufferIntensity);
+            lightController = new RadialLightController( goals, settings,
+                    avoidLuminance, bufferLuminance );
             break;
         case LC_GRID:
             if( settings.size() != 3 ){
-                std::cout << "[Err-W] Number of parameters for LCG goal file is incorrect. Fields: " << settings.size() << "\n";
+                std::cout << "[Err-World] Incorrect Number of parameters for LCG goal file. Fields: " << settings.size() << "\n";
                 exit(1);
             }
             cellWidth = width/std::stof(settings.back());
-            lightController = new GridLightController(goals, settings, lightAvoidIntensity, lightBufferIntensity, cellWidth);
+            lightController = new GridLightController( goals, settings,
+                    avoidLuminance, bufferLuminance, cellWidth);
     }
 }
 
@@ -120,6 +80,10 @@ void World::AddBoundary( void ){
     groundBodyDef.type = b2_staticBody;
     b2PolygonShape groundBox;
     groundBox.SetAsBox( width/2.0, 0.05f );    
+    b2PolygonShape edgeBox;
+    edgeBox.SetAsBox( width/2.0, SPAWN*sqrt(2)/2.0 + EPSILON );
+
+    float halfSpawn = SPAWN/2.0;
     
     // -> Sets the wall arrangements
     // Elements of b2Vec3 cooresponds to:
@@ -133,16 +97,19 @@ void World::AddBoundary( void ){
         b2Vec3( width/2, height, 0 ), 
         b2Vec3( 0, height/2, M_PI/2.0 ), 
         b2Vec3( width, height/2, M_PI/2.0 ), 
-        b2Vec3( SPAWN, SPAWN, 3*M_PI/4.0 ), 
-        b2Vec3( width-SPAWN, SPAWN, M_PI/4.0 ), 
-        b2Vec3( width-SPAWN, height-SPAWN, 3*M_PI/4.0 ), 
-        b2Vec3( SPAWN, height-SPAWN, M_PI/4.0 ) 
+        b2Vec3( halfSpawn, halfSpawn, 3*M_PI/4.0 ), 
+        b2Vec3( width-halfSpawn, halfSpawn, M_PI/4.0 ), 
+        b2Vec3( width-halfSpawn, height-halfSpawn, 3*M_PI/4.0 ), 
+        b2Vec3( halfSpawn, height-halfSpawn, M_PI/4.0 ) 
     };
 
-    for( b2Vec3 wall : boundary ){
+    for( size_t i = 0; i < boundary.size(); ++i ){
         b2Body* wallBody = b2world->CreateBody(&groundBodyDef); 
-        wallBody->CreateFixture(&groundBox, 0.05f); // Param2 is density
-        groundBody.push_back( new Wall(wallBody, wall) );
+        if( i < boundary.size()/2 )
+            wallBody->CreateFixture(&groundBox, 0.05f); // Param2 is density
+        else
+            wallBody->CreateFixture(&edgeBox, 0.05f); // Param2 is density
+        groundBody.push_back( new Wall(wallBody, boundary[i]) );
     }
     
     // TODO: set the no spawn boundary property based on wall size
@@ -159,17 +126,14 @@ void World::AddBoxes( int numBoxes, box_shape_t shape ){
         boxes.push_back( new Box(*this, SPAWN, shape) );
 }
 
-void World::ParseFile( const std::string& fileName, std::queue<std::string>& settings ){
-    bool setParameters = false;
-    float radius = 1.0;
-    float cellWidth = 1.0;
+void World::ParseFile( const std::string& fileName, 
+        std::deque<std::string>& settings ){
+    bool radialController, setParameters = false;
     int row, col, index;
-    float xCoord, yCoord;
-    char controller;
-    bool radialController;
+    float cellWidth, xCoord, yCoord;
 
     if( fileName.empty() ){ // DEFAULT
-        std::cout << "[WARNING] No file name given. Using DEFAULT.";
+        std::cout << "[WARNING] No file name given. Using DEFAULT.\n";
         goals.push_back( new Goal(3,3,Box::size/2) );
     } else {                // READ FROM FILE
         std::string goal, x, y, param;
@@ -180,24 +144,30 @@ void World::ParseFile( const std::string& fileName, std::queue<std::string>& set
                 ss >> x >> y;
                 if( x.at(0) != '#' && goal.size() > 0 ){
                     if( !setParameters ){ 
-                        settings.push(x);
-                        settings.push(y);
+                        settings.push_back(x);
+                        settings.push_back(y);
                         while( ss >> param ){ 
-                            settings.push(param);
+                            settings.push_back(param);
                         }
                         setParameters = true;
-                        controller = toupper(settings.front().c_str()[0]);
-                        radialController = controller == 'R'; 
+                        index = ParseSettings(settings);
+                        for( int i = 0; i < index; ++i ){
+                            settings.pop_front();
+                        }
+                        radialController = controllerType == LC_RADIAL; 
+                        cellWidth = width/std::stof(settings.back());
                     } else { 
                         if( radialController ){
-                            goals.push_back( new Goal(std::stof(x), std::stof(y), radius) );
+                            goals.push_back( new Goal(
+                                        std::stof(x), std::stof(y), Box::size));
                         } else {
                             row = std::stoi(x);
                             col = std::stoi(y);
                             index = row*std::stoi(settings.back())+col; 
                             xCoord = col*cellWidth + cellWidth/2.0;
                             yCoord = row*cellWidth + cellWidth/2.0; 
-                            goals.push_back( new Goal(xCoord, yCoord, radius, index) );
+                            goals.push_back( new Goal( xCoord, yCoord, 
+                                        cellWidth, index) );
                         }
                     }
                 }
@@ -209,7 +179,46 @@ void World::ParseFile( const std::string& fileName, std::queue<std::string>& set
     }
 }
 
-float World::GetLightIntensity( const b2Vec2& here ){
+int World::ParseSettings( const std::deque<std::string>& settings ){
+    switch(settings[0].c_str()[0]){ // zero
+        case 'R': case 'r':
+            controllerType = LC_RADIAL;
+            break;
+        case 'G': case 'g':
+            controllerType = LC_GRID;
+            break;
+        default:
+            printf("[ERR-World] invalid lightcontroller type: %s\n", 
+                    settings[0].c_str()); 
+            exit(1);
+    }
+    width = std::stof(settings[1]);
+    height = std::stof(settings[2]);
+    numBoxes = std::stoi(settings[3]);
+    Box::size = std::stof(settings[4]);
+    switch(settings[5].c_str()[0]){
+        case 'C': case 'c':
+            boxShape = SHAPE_CIRC;
+            break;
+        case 'S': case 's':
+            boxShape = SHAPE_RECT;
+            break;
+        case 'H': case 'h':
+            boxShape = SHAPE_HEX;
+            break;
+        default:
+            printf("[ERR-World] invalid box shape: %s\n", 
+                    settings[5].c_str());
+            exit(1);
+    }
+    numRobots = std::stoi(settings[6]);
+    Robot::size = std::stof(settings[7]);
+    numPatterns = std::stoi(settings[8]);
+    std::cout << " =======> ok\n";
+    return 9;   // Number of elements used
+}
+
+float World::GetLuminance( const b2Vec2& here ){
     return lightController->GetIntensity( here.x, here.y );
 }
 
@@ -237,7 +246,8 @@ void World::Step( float timestep ){
 //   mousey = -y/10.0;
 // }
 
-void key_callback( GLFWwindow* window, int key, int scancode, int action, int mods) {
+void key_callback( GLFWwindow* window, int key, int scancode, int action, 
+        int mods) {
     if(action == GLFW_PRESS)
         switch( key ) {
             case GLFW_KEY_SPACE:
@@ -265,7 +275,8 @@ void key_callback( GLFWwindow* window, int key, int scancode, int action, int mo
         }
 }
 
-GuiWorld::GuiWorld( float width, float height, int numRobots, int numBoxes, box_shape_t boxShape ) : 
+GuiWorld::GuiWorld( float width, float height, int numRobots, int numBoxes,
+        box_shape_t boxShape ) : 
     World( width, height, numRobots, numBoxes, boxShape ),
     window(NULL),
     draw_interval( skip ) 
