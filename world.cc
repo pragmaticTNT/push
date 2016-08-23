@@ -18,14 +18,12 @@ World::World( float width, float height, int robotNum, int boxNum,
     height(height),
     avoidLuminance(0.2),
     bufferLuminance(0.4),
-    lightController(NULL),
+    lightController(new LightController()),
     b2world( new b2World( b2Vec2( 0,0 )) ) // gravity 
 {
     AddBoundary();
     AddRobots(robotNum);
     AddBoxes(boxNum, boxShape);
-    lightController = new LightController( 
-            avoidLuminance, bufferLuminance, 1.0);
 }
 
 World::World( const std::string& goalFile ):
@@ -44,23 +42,14 @@ World::World( const std::string& goalFile ):
     AddBoundary();
     AddRobots(numRobots);
     AddBoxes(numBoxes, boxShape);
-    printf("Starting %.4fx%.4f world. Robots: %i Boxes: %i\n", 
+    printf("Starting %.2f x %.2f world. Robots: %i Boxes: %i\n", 
             width, height, numRobots, numBoxes);
     
-    switch( controllerType ){
-        case LC_RADIAL:
-            lightController = new RadialLightController( goals, settings,
-                    avoidLuminance, bufferLuminance );
-            break;
-        case LC_GRID:
-            if( settings.size() != 3 ){
-                std::cout << "[Err-World] Incorrect Number of parameters for LCG goal file. Fields: " << settings.size() << "\n";
-                exit(1);
-            }
-            cellWidth = width/std::stof(settings.back());
-            lightController = new GridLightController( goals, settings,
-                    avoidLuminance, bufferLuminance, cellWidth);
+    if( settings.size() != 3 ){
+        std::cout << "[Err-World] Incorrect Number of parameters for LCG goal file. Fields: " << settings.size() << "\n";
+        exit(1);
     }
+    lightController = new GridLightController( goals, settings, width );
 }
 
 World::~World(){
@@ -128,7 +117,7 @@ void World::AddBoxes( int numBoxes, box_shape_t shape ){
 
 void World::ParseFile( const std::string& fileName, 
         std::deque<std::string>& settings ){
-    bool radialController, setParameters = false;
+    bool setParameters = false;
     int row, col, index;
     float cellWidth, xCoord, yCoord;
 
@@ -154,21 +143,15 @@ void World::ParseFile( const std::string& fileName,
                         for( int i = 0; i < index; ++i ){
                             settings.pop_front();
                         }
-                        radialController = controllerType == LC_RADIAL; 
                         cellWidth = width/std::stof(settings.back());
                     } else { 
-                        if( radialController ){
-                            goals.push_back( new Goal(
-                                        std::stof(x), std::stof(y), Box::size));
-                        } else {
-                            row = std::stoi(x);
-                            col = std::stoi(y);
-                            index = row*std::stoi(settings.back())+col; 
-                            xCoord = col*cellWidth + cellWidth/2.0;
-                            yCoord = row*cellWidth + cellWidth/2.0; 
-                            goals.push_back( new Goal( xCoord, yCoord, 
+                        row = std::stoi(x);
+                        col = std::stoi(y);
+                        index = row*std::stoi(settings.back())+col; 
+                        xCoord = col*cellWidth + cellWidth/2.0;
+                        yCoord = row*cellWidth + cellWidth/2.0; 
+                        goals.push_back( new Goal( xCoord, yCoord, 
                                         cellWidth, index) );
-                        }
                     }
                 }
             }
@@ -180,18 +163,6 @@ void World::ParseFile( const std::string& fileName,
 }
 
 int World::ParseSettings( const std::deque<std::string>& settings ){
-    switch(settings[0].c_str()[0]){ // zero
-        case 'R': case 'r':
-            controllerType = LC_RADIAL;
-            break;
-        case 'G': case 'g':
-            controllerType = LC_GRID;
-            break;
-        default:
-            printf("[ERR-World] invalid lightcontroller type: %s\n", 
-                    settings[0].c_str()); 
-            exit(1);
-    }
     width = std::stof(settings[1]);
     height = std::stof(settings[2]);
     numBoxes = std::stoi(settings[3]);
@@ -214,7 +185,7 @@ int World::ParseSettings( const std::deque<std::string>& settings ){
     numRobots = std::stoi(settings[6]);
     Robot::size = std::stof(settings[7]);
     numPatterns = std::stoi(settings[8]);
-    std::cout << " =======> ok\n";
+    // std::cout << width << "x" << height << '\n';
     return 9;   // Number of elements used
 }
 
@@ -318,11 +289,54 @@ void GuiWorld::DrawWorld( void ){
     glScalef( 2.0/width, 2.0/height, 1.0 );
     glTranslatef( -width/2.0, -height/2.0, 0 );
 
+    tl[0] = 0;      tl[1] = height; tl[2] = 0;
+    tr[0] = width;  tr[1] = height; tr[2] = 0;
+    bl[0] = 0;      bl[1] = 0;      bl[2] = 0;
+    br[0] = width;  br[1] = 0;      br[2] = 0;
+
     // get mouse/pointer events
     //glfwSetCursorPosCallback( window, checkmouse );
 
     // get key events
     glfwSetKeyCallback( window, key_callback );
+}
+
+void GuiWorld::DrawTexture( const uint8_t* pixels,
+          const unsigned int cols,
+          const unsigned int rows )
+{
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+    glEnable(GL_TEXTURE_2D);
+     
+
+    glTexImage2D(GL_TEXTURE_2D, 0, 4, cols, rows, 0, 
+           GL_RGB,  GL_UNSIGNED_BYTE, pixels );
+
+    glColor3f(1,1,1); // white
+
+    glBegin(GL_QUADS);
+
+    glTexCoord2f(0.0, 0.0);
+    glVertex3fv( tl );
+
+    glTexCoord2f(0.0, 1.0);
+    glVertex3fv( bl );
+
+    glTexCoord2f(1.0, 1.0);
+    glVertex3fv( br );
+
+    glTexCoord2f(1.0, 0.0);
+    glVertex3fv( tr );
+
+    glEnd();
+
+    glDisable(GL_TEXTURE_2D);
 }
 
 void GuiWorld::Step( float timestep ){
@@ -336,12 +350,14 @@ void GuiWorld::Step( float timestep ){
         draw_interval = skip;
 
         // ===> DRAW: background color
-        glClearColor( 1, 1, 0.6, 1 ); 
+        glClearColor( 0.8, 0.8, 0.8, 1 ); 
         glClear(GL_COLOR_BUFFER_BIT);	
 
         glPolygonOffset( 1.0, 1.0 ); 
-        for( auto light : lightController->lights )
-            light->Draw();
+        DrawTexture( lightController->pixels, lightController->pRows, 
+                     lightController->pCols );
+        // for( auto light : lightController->lights )
+        //     light->Draw();
         for( auto goal : goals )
             goal->Draw();
 

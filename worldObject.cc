@@ -5,12 +5,13 @@
 // ===> Set Static Variables
 float Box::size = 0.25;
 float Robot::size = 0.5;
-float Light::radiusSmall;
-float Light::radiusLarge;
+float Light::HEIGHT = 1.0;
+float Light::radius;
+float Light::cosCritAngle;
 
 // ===> COLORS
 const float c_yellow[3]     = {1.0, 1.0, 0.0};
-const float c_light[3]      = {0.8, 0.8, 0.8};
+const float c_light[3]      = {1.0, 1.0, 0.6};
 const float c_red[3]        = {1.0, 0.0, 0.0};
 const float c_green[3]      = {0.0, 1.0, 0.0};
 const float c_lightblue[3]  = {0.5, 0.5, 1.0};
@@ -198,10 +199,9 @@ void Box::Draw( void ){
 
 // ===> LIGHT class methods
 void Light::Draw( void ){
-    if( !on ){
-        glColor4f( c_light[0], c_light[1], c_light[2], 0.7 );
-        DrawDisk( GetCenter(), radiusSmall );
-        DrawDisk( GetCenter(), radiusLarge );
+    if( on ){
+        glColor4f( c_light[0], c_light[1], c_light[2], 1 );
+        DrawDisk( GetCenter(), radius );
     }
 }
 // ===> END LIGHT class methods

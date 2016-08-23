@@ -11,7 +11,7 @@
 #include <Box2D/Box2D.h>
 #include <GLFW/glfw3.h>
 
-static const float EPSILON = 10e-4; // float comparison error
+static const float EPSILON = 10e-5; // float comparison error
 static const float SPAWN = 0.5; // spawn distance away from wall 
 
 typedef enum {
@@ -27,6 +27,7 @@ class WorldObject{
     protected:
         b2Vec2 center;
         void WhereAmI( std::string objectType ){
+            center = GetCenter();
             std::cout << objectType << 
                 ": (" << center.x << "," << center.y << ")" << std::endl;
         }
@@ -68,7 +69,7 @@ class Box : public WorldObject {
 class Goal : public WorldObject {
     public:
         bool filled;
-        int index;  // WRT to the lights in the Grid Light Controller
+        int index;  // WRT grid Light Controller
         float radius;
 
         Goal( float x, float y, float size, int index = 0 ) : 
@@ -80,19 +81,21 @@ class Goal : public WorldObject {
 
 class Light : public WorldObject {
     public:
-        static float radiusSmall, radiusLarge;
+        static float cosCritAngle, radius, HEIGHT;
+        bool on;
         int layer;
-        bool on, atGoal;
 
         Light( float x, float y ) : 
-            WorldObject(x,y), on(false), atGoal(false), layer(0){}
+            WorldObject(x,y), on(false), layer(-1){}
         Light( b2Vec2 center ) : 
-            WorldObject(center), on(false), atGoal(false), layer(0){}
+            WorldObject(center), on(false), layer(-1){}
         ~Light(){}
 
-        float GetIntensity( float x, float y, float scaleFactor ){
-            float light = 1-1.0/(1+scaleFactor*SqrDistanceTo(x,y)); 
-            return on ? 1.0 : light;
+        float GetIntensity( float x, float y ){
+            float cosAngle = cos( atan2( sqrt(SqrDistanceTo(x,y)), HEIGHT) );
+            return on && (cosAngle > cosCritAngle + EPSILON) ? 
+                1.0 - (1.0 - cosAngle)/(1.0 - cosCritAngle) : 
+                EPSILON;
         }
         void SetCenter( float x, float y ){ center = b2Vec2(x,y); }
         void SetCenter( b2Vec2 here ){ center = here; }
@@ -117,7 +120,7 @@ class Robot : public WorldObject{
         
         Robot( World& world, float x, float y, float angle);      
         b2Vec2 GetCenter( void ){
-            center = (body->GetWorldCenter());
+            center = body->GetWorldCenter();
             return center;
         }
         void WhereAmI( void ) { WorldObject::WhereAmI("Robot"); }
@@ -161,70 +164,31 @@ class Pusher : public Robot {
 }; // END Pusher class
 
 class LightController {
+    public:
+        std::vector<Light*> lights;
+        // TODO: move these to GLC(make default) then LC(make interface)
+        uint8_t* pixels; 
+        unsigned int pRows, pCols;
+        
+        LightController();
+        ~LightController();
+        
+        virtual float GetIntensity( float x, float y ){ return EPSILON; }
+        virtual void Update( const std::vector<Goal*>& goals, 
+                const std::vector<Box*>& boxes, float timeStep ){}
     protected:
-        float avoidLuminance;   
-        float bufferLuminance;  
-
-        // -> Intensity Related
-        float scaleFactor;          // ORDER DEPENDENCY 
-        float radiusSmall; 
-        float radiusLarge;          // ORDER DEPENDENCY
-
         // -> Update Parameters
         float goalError; 
         bool isFilled;
-
-        float GetScaleFactor( float radius ){
-            return ((1.0/(1-avoidLuminance))-1)/pow(radius,2.0);
-        }
-        float GetRadiusLarge(){
-            return sqrt(((1.0/(1-bufferLuminance))-1)/scaleFactor);
-        }
-
-    public:
-        std::vector<Light*> lights;
-        
-        LightController( float avoidLuminance, float bufferLuminance,
-                float radiusSmall );
-        ~LightController();
-        
-        virtual float GetIntensity( float x, float y ){ return 1.0; }
-        virtual void Update( const std::vector<Goal*>& goals, 
-                const std::vector<Box*>& boxes, float timeStep ){}
 }; // END LightController Class
 
-class RadialLightController: public LightController {
-    private:
-        float radiusInit, timeElapsed;
-        float growRate, trialTime, patternTime, maxRadius;
-        bool repeatPattern, startScramble, scramble;
-
-        float UpdateGoalsInfo( const std::vector<Goal*>& goals, 
-                const std::vector<Box*>& boxes );
-
-    public:
-        RadialLightController( 
-                const std::vector<Goal*>& goals, 
-                const std::deque<std::string>& settings, 
-                float avoidLuminance = 0.2, 
-                float bufferLuminance = 0.4, 
-                float radiusSmall = 0.5
-                );
-        float GetIntensity( float x, float y );
-        void Update( const std::vector<Goal*>& goals, 
-                const std::vector<Box*>& boxes );
-        void Update( const std::vector<Goal*>& goals, 
-                const std::vector<Box*>& boxes, float timeStep );
-}; // END RadialLightController class 
-
 class GridLightController : public LightController {
+
     public:
         GridLightController( 
                 const std::vector<Goal*>& goals, 
                 const std::deque<std::string>& settings, 
-                float avoidLuminance, 
-                float bufferLuminance, 
-                float cellWidth );
+                float worldWidth );
         float GetIntensity( float x, float y );
         void Update( const std::vector<Goal*>& goals, 
                 const std::vector<Box*>& boxes, float timeStep );
@@ -248,13 +212,14 @@ class GridLightController : public LightController {
            TR=0, TC, TL, CL, BL, BC, BR, CR, NBOUR_NUM
         } neighbour_t;
 
-        float dimCell, trialTime, timeElapsed;
-        int dimGrid, maxLayer, layersActive, currentLayer;
+        float dimWorld, dimCell, trialTime, timeElapsed;
+        int dimGrid, maxLayers, activeLayers, currentLayer;
+        int stepTime, stepElapsed;
         std::vector< std::vector<int> > layerIndicies;
 
         // Member functions related to grid element access
         int RowColToIndex( int row, int col ){
-            // ASSERT: 0 <= index <= dimGric -1
+            // ASSERT: 0 <= index <= dimGrid -1
             return 
                 ( row < 0 || row > dimGrid-1 || 
                   col < 0 || col > dimGrid-1 ) ? 
@@ -271,8 +236,8 @@ class GridLightController : public LightController {
             return b2Vec2(x, y);
         }
         void PointInCell( float x, float y, int cell[2] ){
-            cell[0] = std::max(round(y/dimCell), 0.0);
-            cell[1] = std::max(round(x/dimCell), 0.0);
+            cell[0] = floor(y/dimCell);  
+            cell[1] = floor(x/dimCell);
         }
         int NextLayer( int now ){
             return now > 1 ? now-1 : dimGrid-1; 
@@ -280,24 +245,21 @@ class GridLightController : public LightController {
         int NeighbourIndex( int cell[2], neighbour_t n );
 
         // Member functions related to update
-        void PreprocessLayers( const std::vector<Goal*>& goals );
+        void SetLayers( const std::vector<Goal*>& goals );
         void MarkQuadrants( bool quadrants[8], neighbour_t n );
-        void AddLayerIndicies( int layer, int cell[2], neighbour_t n );
+        void AddLayerIndicies( int currlayer, int cell[2], neighbour_t n );
+        void SetPixels( void );
         void Toggle( int layer );
-        void TurnOffAllLights( void );
-        bool NoBoxOutside( const std::vector<Box*>& boxes );
+        void TurnAllLights( bool on );
+        bool BoxOutside( const std::vector<Box*>& boxes );
         void PrintLayerDistribution( void );
+        void InitializeLayers( void );
         bool GoalObtained( const std::vector<Box*>& boxes, 
                 const std::vector<Goal*>& goals );
 }; // END GridLightController class
 
 class World {
     public:  
-        typedef enum {
-            LC_RADIAL=0,
-            LC_GRID
-        } light_controller_t;
-
         b2World* b2world;
         float width, height;
         float avoidLuminance, bufferLuminance;
@@ -311,7 +273,6 @@ class World {
 
     protected:
         int numPatterns, numBoxes, numRobots;
-        light_controller_t controllerType;
         box_shape_t boxShape;
         // std::vector<std::vector<Goal*> > goalList;
         std::vector<Goal*> goals;
@@ -329,8 +290,6 @@ class World {
 }; // END World class
 
 class GuiWorld : public World {
-    private:
-        void DrawWorld( void );
     public:
         static bool paused;
         static bool step;
@@ -345,5 +304,10 @@ class GuiWorld : public World {
         ~GuiWorld();
         void Step( float timestep );
         bool RequestShutdown();
+    private:
+        float tl[3], tr[3], bl[3], br[3];
+        void DrawWorld( void );
+        void DrawTexture( const uint8_t* pixels, const unsigned int cols, 
+                          const unsigned int rows );
 }; // END GuiWorld class
 #endif

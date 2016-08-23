@@ -42,7 +42,7 @@ void Pusher::Update( float timestep, World& world ) {
         speeda = 0;
     }
 
-    // run out of batteries
+    // // run out of batteries
     // if( currentLuminance < DEAD ){
     //     timeleft = 0.0;
     //     state = S_DEAD;

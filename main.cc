@@ -83,7 +83,7 @@ int main( int argc, char* argv[] ){
         }
     }
     GuiWorld world = argc < 4 and argc > 1 ? 
-        GuiWorld( "patterns/" + goalfile ) :
+        GuiWorld( "templates/" + goalfile ) :
         GuiWorld( width, height, robots, boxes, shape );
 
     /* Loop until the user closes the window */
