@@ -10,15 +10,11 @@ float Light::radius;
 float Light::cosCritAngle;
 
 // ===> COLORS
-const float c_yellow[3]     = {1.0, 1.0, 0.0};
 const float c_light[3]      = {1.0, 1.0, 0.6};
 const float c_red[3]        = {1.0, 0.0, 0.0};
-const float c_green[3]      = {0.0, 1.0, 0.0};
+const float c_darkred[3]    = {0.8, 0.0, 0.0};
 const float c_lightblue[3]  = {0.5, 0.5, 1.0};
 const float c_blue[3]       = {0.0, 0.0, 1.0};
-const float c_darkred[3]    = {0.8, 0.0, 0.0};
-const float c_tan[3]        = {0.8, 0.6, 0.5};
-const float c_gray[3]       = {0.9, 0.9, 1.0};
 const float c_black[3]      = {0.0, 0.0, 0.0};
 
 
@@ -257,16 +253,6 @@ Robot::Robot( World& world, float x, float y, float angle ) :
     body->SetTransform( b2Vec2( x, y ), angle );	
     bumper->SetTransform( body->GetWorldPoint( b2Vec2( size/2,0) ), angle );	
     GetCenter();
-}
-
-bool Robot::isBumperPressed( void ) {
-    return joint->GetJointTranslation() < 0.01;
-}
-
-// set body speed in body-local coordinate frame
-void Robot::SetSpeed( float x, float y, float angle ) {  
-    body->SetLinearVelocity( body->GetWorldVector(b2Vec2(x,y)) );
-    body->SetAngularVelocity( angle );
 }
 
 void Robot::Draw( void ){

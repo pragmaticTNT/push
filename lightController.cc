@@ -1,5 +1,4 @@
-#include <iostream>
-
+#include <iostream> 
 #include "push.hh"
 
 // Specifies composition of pixel data:
@@ -54,7 +53,10 @@ GridLightController::GridLightController(
         float worldWidth ) : 
     LightController(), 
     timeElapsed(0),
-    stepElapsed(0)
+    totalTime(0),
+    maxLayer(0),
+    bdLayer(100),
+    expand(-1)
 {
     size_t numParams = settings.size();
 
@@ -64,7 +66,7 @@ GridLightController::GridLightController(
     dimWorld = worldWidth;
     dimCell = worldWidth / dimGrid;
 
-    Light::radius = dimCell*(sqrt(2)+1)/4.0;
+    Light::radius = dimCell;
     Light::cosCritAngle = cos( atan2(Light::radius, Light::HEIGHT) );
  
     std::cout << "[GLC] Setting Goals...\n";
@@ -72,21 +74,13 @@ GridLightController::GridLightController(
         for( int col = 0; col < dimGrid; ++col )
             lights.push_back( new Light(GetLightCenter(row, col)) );
 
-    activeLayers = 4;   // Where should we set this?
     SetLayers(goals);
-    // Set maxLayers
-    for( Light* light: lights ){
-        if( light->layer > maxLayers )
-            maxLayers = light->layer;
-        else if( light->layer < 0 )
-            std::cout << "[ERR] (GLC) Layer not set.\n";
+    printf("[GLC] Layers - Max: %i Bd: %i Active: %i\n", maxLayer, bdLayer, activeLayers);
+    while( currentLayer >= bdLayer ){
+        ToggleLayer(currentLayer);
+        --currentLayer;
     }
-    // PrintLayerDistribution();
-
-    currentLayer = maxLayers;
-    stepTime = 5*maxLayers;
-    // std::cout << "Max Layer: " << maxLayers << "\n";
-    InitializeLayers(); // This doesn't do much yet
+    PrintLayerDistribution();
 
     pRows = 100;
     pCols = 100;
@@ -98,40 +92,63 @@ GridLightController::GridLightController(
 // NOTE: processed cells are marked by turning the light ON!
 void GridLightController::SetLayers( const std::vector<Goal*>& goals ){
     // Setting goal lights layer 0
+    int nbourCells = 4;
     std::vector<int> goalLayer;
     layerIndicies.push_back(goalLayer);
     for( Goal* goal : goals ){
-        layerIndicies[0].push_back(goal->index);
-        lights[goal->index]->layer = 0;
+        for( int i = 0; i < nbourCells; ++i ){
+            layerIndicies[0].push_back((goal->index)[i]);
+            lights[(goal->index)[i]]->layer = 0;
+        }
     }
 
     // Setting remaining layers
-    for( int currLayer = 1; currLayer < dimGrid; ++currLayer ){
+    for( int layer = 1; layer < dimGrid; ++layer ){
         std::vector<int> newLayer;
         layerIndicies.push_back(newLayer);
         for( Goal* goal : goals ){
-            int nBourIndex;
-            int cell[2] = {0, 0};
-            bool quadrants[8] = {
-                true, true, true, true, 
-                true, true, true, true 
-            };
-            
-            IndexToRowCol( goal->index, cell );
-            // Mark quadrants if neighbour cells are goal cells
-            for( int i = 0; i < NBOUR_NUM; ++i ){
-                neighbour_t n = static_cast<neighbour_t>(i);
-                nBourIndex = NeighbourIndex(cell, n); 
-                if( lights[nBourIndex]->layer == 0 ) 
-                    MarkQuadrants( quadrants, n ); 
-            }
-            for( int i = 0; i < NBOUR_NUM; ++i ){
-                neighbour_t n = static_cast<neighbour_t>(i);
-                if( quadrants[i] )
-                    AddLayerIndicies( currLayer, cell, n );
+            for( int i = 0; i < nbourCells; ++i ){
+                int nBourIndex;
+                int cell[2] = {0, 0};
+                bool quadrants[8] = {
+                    true, true, true, true, 
+                    true, true, true, true 
+                };
+                
+                IndexToRowCol( (goal->index)[i], cell );
+                // Mark quadrants if neighbour cells are goal cells
+                for( int i = 0; i < NBOUR_NUM; ++i ){
+                    neighbour_t n = static_cast<neighbour_t>(i);
+                    nBourIndex = NeighbourIndex(cell, n); 
+                    if( lights[nBourIndex]->layer == 0 ) 
+                        MarkQuadrants( quadrants, n ); 
+                }
+                for( int i = 0; i < NBOUR_NUM; ++i ){
+                    neighbour_t n = static_cast<neighbour_t>(i);
+                    if( quadrants[i] )
+                        AddLayerIndicies( layer, cell, n );
+                }
             }
         } 
     }
+
+    // Set maxLayer 
+    int layer;
+    for( int row = 0; row < dimGrid; ++row ){
+        for ( int col = 0; col < dimGrid; ++col ){
+            layer = lights[RowColToIndex(row, col)]->layer;  
+            if( layer > maxLayer )
+                maxLayer = layer;
+            else if( layer < 0 )
+                std::cout << "[ERR] (GLC) Layer not set.\n";
+            else if( (row == 0 or row == dimGrid-1 or 
+                      col == 0 or col == dimGrid-1) and layer < bdLayer )
+                bdLayer = layer;
+        }
+    }
+    
+    activeLayers = std::min(4, maxLayer-1); // Where should we set this?
+    currentLayer = maxLayer;
 }
 
 // RETURN: index of n-bour if exists otherwise index of cell 
@@ -179,39 +196,39 @@ void GridLightController::MarkQuadrants( bool quadrants[8], neighbour_t n ){
     }
 }
 
-void GridLightController::AddLayerIndicies( int currLayer, int cell[2], 
+void GridLightController::AddLayerIndicies( int layer, int cell[2], 
         neighbour_t n ){
     bool oneCell = true;
     int rowMod = 0, colMod = 0, index = 0;
 
     // If only oneCell then changes the setting of a cell at a distance
-    // "currLayer" away. Otherwise changes an entire diagonal.
+    // "layer" away. Otherwise changes an entire diagonal.
     switch( n ){
         case TR: oneCell = false; rowMod = 1; colMod = 1; break; 
-        case TC: oneCell = true; rowMod = currLayer; colMod = 0; break;
+        case TC: oneCell = true; rowMod = layer; colMod = 0; break;
         case TL: oneCell = false; rowMod = 1; colMod = -1; break;
-        case CL: oneCell = true; rowMod = 0; colMod = -currLayer; break;
+        case CL: oneCell = true; rowMod = 0; colMod = -layer; break;
         case BL: oneCell = false; rowMod = -1; colMod = -1; break;
-        case BC: oneCell = true; rowMod = -currLayer; colMod = 0; break;
+        case BC: oneCell = true; rowMod = -layer; colMod = 0; break;
         case BR: oneCell = false; rowMod = -1; colMod = 1; break;
-        case CR: oneCell = true; rowMod = 0; colMod = currLayer; break;
+        case CR: oneCell = true; rowMod = 0; colMod = layer; break;
     }
 
     if( oneCell ){
         index = RowColToIndex(cell[0]+rowMod, cell[1]+colMod);
         if( index >= 0 and lights[index]->layer < 0 ){ // i.e. not set
-            layerIndicies[currLayer].push_back(index);
-            lights[index]->layer = currLayer;
+            layerIndicies[layer].push_back(index);
+            lights[index]->layer = layer;
         }
     } else {
-        for( int i = 1; i < currLayer; ++i ){
+        for( int i = 1; i < layer; ++i ){
             index = RowColToIndex( 
                         cell[0]+rowMod*i, 
-                        cell[1]+colMod*(currLayer-i) 
+                        cell[1]+colMod*(layer-i) 
                     );      
             if( index >= 0 and lights[index]->layer < 0 ){
-                layerIndicies[currLayer].push_back(index);
-                lights[index]->layer = currLayer;
+                layerIndicies[layer].push_back(index);
+                lights[index]->layer = layer;
             }
         }
     }
@@ -228,17 +245,6 @@ void GridLightController::PrintLayerDistribution( void ){
     std::cout << "\n";
 }
 
-void GridLightController::InitializeLayers( void ){
-    int tempLayer = currentLayer;
-    // for( int i = 0; i < activeLayers; ++i ){
-    //     Toggle(tempLayer);
-    //     tempLayer = NextLayer(tempLayer);
-    // }
-    for( int i = 1; i < 3; ++i ){
-        Toggle(i);
-    }
-}
-
 void GridLightController::SetPixels( void ){
     unsigned int index;
     float x, y, scale;
@@ -250,40 +256,41 @@ void GridLightController::SetPixels( void ){
             y = std::min( dimWorld-EPSILON, rowWidth * row );
             index = FORMAT*((pRows-row-1)*pRows + col);
             for( int i = 0; i < FORMAT; ++i ){
-                pixels[index+i] = DARK[i] + DELTA[i]*GetIntensity(x, y); 
+                // Intensity clamped to [0,1] anything > 1 is precieved as 1
+                pixels[index+i] = DARK[i] + 
+                    DELTA[i]*std::min(float(1.0),GetIntensity(x, y)); 
             }
         } 
     }
 }
 
-bool GridLightController::BoxOutside( const std::vector<Box*>& boxes ){
+int GridLightController::NumBoxesOutside( const std::vector<Box*>& boxes ){
     int lightIndex, layer;
     int cell[2];
+    int numBoxes = 0;
 
     for( Box* box : boxes ){
         b2Vec2 boxCenter = box->GetCenter();
         PointInCell( boxCenter.x, boxCenter.y, cell );
         lightIndex = RowColToIndex( cell[0], cell[1] );
         layer = lights[lightIndex]->layer;
-        if( lightIndex >= 0 and layer-1 >= currentLayer-activeLayers ){
+        if( lightIndex >= 0 and layer <= currentLayer ){
             // printf("Box center: (%.4f, %.4f)\n", boxCenter.x, boxCenter.y);
             // box->WhereAmI();
             // printf("Row: %i Col: %i Layer: %i CurrentLayer: %i\n", 
             //         cell[0], cell[1], layer, currentLayer);
-            return true;
+            ++numBoxes;
         } 
     }
-    return false;
+    return numBoxes;
 }
 
-void GridLightController::Toggle( int layer ){
-    if( layer > 0){
-        // std::cout << "Toggling layer: " << layer << std::endl;
-        for( int index : layerIndicies[layer] )
-            lights[index]->on = !lights[index]->on;
-    } else {
-        Toggle( layer+dimGrid-1 ); // Layers wrap arround with modular arithmetics
-    }
+void GridLightController::ToggleLayer( int layer ){
+    // Layers wrap arround with modular arithmetics
+    layer = layer > 0 ? layer : layer + dimGrid-1;
+    // std::cout << "Toggling layer: " << layer << std::endl;
+    for( int index : layerIndicies[layer] )
+        lights[index]->on = !lights[index]->on;
 }
 
 void GridLightController::TurnAllLights( bool on ){
@@ -296,11 +303,17 @@ bool GridLightController::GoalObtained( const std::vector<Box*>& boxes,
         const std::vector<Goal*>& goals ){
     bool goalFilled = false;
     for( Goal* goal : goals ){
+        float minErr = 100;
         for ( Box* box : boxes ){
-            if( sqrt(box->SqrDistanceTo(*goal)) < goalError )
+            float err = sqrt(box->SqrDistanceTo(*goal));
+            if( err < goalError )
                 goalFilled = true;
+            else
+                minErr = std::min(minErr, err);
         }
         if( not goalFilled ){
+            // goal->WhereAmI();
+            // std::cout << "Goal Error: " << minErr << "\n";
             return false;
         }
         goalFilled = false;
@@ -325,10 +338,9 @@ float GridLightController::GetIntensity( float x, float y ){
         for( int i = 0; i < NBOUR_NUM; ++i){
             nBour = static_cast<neighbour_t>(i);
             index = NeighbourIndex( cell, nBour );
-            if( index >= 0 ){
+            if( index >= 0 and lights[index]->on ){
                 luminosity += lights[index]->GetIntensity(x,y);
             }
-            //std::cout << "N-bour " << i << ": " << luminosity << '\n';
         }
         return luminosity;
     } else {
@@ -336,32 +348,35 @@ float GridLightController::GetIntensity( float x, float y ){
     }
 }
 
-void GridLightController::Update( const std::vector<Goal*>& goals, 
+bool GridLightController::Update( const std::vector<Goal*>& goals, 
         const std::vector<Box*>& boxes, float timeStep ){
+    totalTime += timeStep;
     timeElapsed += timeStep;
     if( timeElapsed > trialTime ){
-        bool boxOutside = BoxOutside(boxes); 
+        // bool boxOutside = BoxOutside(boxes); 
         timeElapsed = 0;
         // std::cout << "(GLC) Changing lights configuration... \n";
         // Check that all boxes in shadow region
         if( GoalObtained(boxes, goals) ){
             std::cout << "[GLC] Goal Obtained!\n";
-            // TurnAllLights(false);
-        } else if( !boxOutside &&  currentLayer-activeLayers > 0 ){
-            // Toggle(currentLayer); 
-            // Toggle(currentLayer-activeLayers);
-            // currentLayer = NextLayer(currentLayer); 
-        } else if( !boxOutside ){
-            stepElapsed += 1;
-            std::cout << "Step: " << stepElapsed << " Box Outside!\n";
-        }
-        if( stepElapsed > stepTime ){
-            stepElapsed = 0;
-            TurnAllLights(false);
-            currentLayer = maxLayers;
-            InitializeLayers();
+            std::cout << "[GLC] Totoal Time Elapsed: " << totalTime << "\n";
+            ToggleLayer(1);
+            ToggleLayer(2);
+            return false;
+        } else if( NumBoxesOutside(boxes) >= goals.size() and 
+                   currentLayer > 0 ){
+            ToggleLayer(currentLayer);
+            currentLayer += expand;
+            // if( currentLayer == 0 ){
+            //     expand = 1;
+            //     ++currentLayer;
+            // } else if( currentLayer == bdLayer ){
+            //     expand = -1;
+            //     --currentLayer; 
+            // }
         }
         SetPixels();
     }
+    return true;
 }
 // ===> END GRIDLIGHTCONTROLLER clas methods

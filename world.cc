@@ -29,7 +29,7 @@ World::World( float width, float height, int robotNum, int boxNum,
 World::World( const std::string& goalFile ):
     width(0),
     height(0),
-    avoidLuminance(0.2),
+    avoidLuminance(0.1),
     bufferLuminance(0.4),
     lightController(NULL),
     b2world( new b2World( b2Vec2( 0,0 )) )
@@ -118,12 +118,12 @@ void World::AddBoxes( int numBoxes, box_shape_t shape ){
 void World::ParseFile( const std::string& fileName, 
         std::deque<std::string>& settings ){
     bool setParameters = false;
-    int row, col, index;
+    int used, gridDim, row, col, indexTR, indexTL, indexBL, indexBR;
     float cellWidth, xCoord, yCoord;
+    std::string separator = "-"; // deliminates settings and goals
 
     if( fileName.empty() ){ // DEFAULT
         std::cout << "[WARNING] No file name given. Using DEFAULT.\n";
-        goals.push_back( new Goal(3,3,Box::size/2) );
     } else {                // READ FROM FILE
         std::string goal, x, y, param;
         std::ifstream goalFile(fileName.c_str());
@@ -131,27 +131,34 @@ void World::ParseFile( const std::string& fileName,
             while( std::getline(goalFile, goal) ){
                 std::stringstream ss(goal);
                 ss >> x >> y;
-                if( x.at(0) != '#' && goal.size() > 0 ){
+                // If current line is not a comment...
+                if( goal.size() > 0 and x.at(0) != '#'){
+                    // If not yet finished setting the parameters...
                     if( !setParameters ){ 
-                        settings.push_back(x);
-                        settings.push_back(y);
-                        while( ss >> param ){ 
-                            settings.push_back(param);
+                        if( x.compare(separator) == 0 ){
+                            setParameters = true;
+                            used = ParseSettings(settings);
+                            for( int i = 0; i < used; ++i ){
+                                settings.pop_front();
+                            }
+                            gridDim = std::stoi(settings.back());
+                            cellWidth = width/gridDim;
+                        } else {
+                            settings.push_back(y);
                         }
-                        setParameters = true;
-                        index = ParseSettings(settings);
-                        for( int i = 0; i < index; ++i ){
-                            settings.pop_front();
-                        }
-                        cellWidth = width/std::stof(settings.back());
                     } else { 
                         row = std::stoi(x);
                         col = std::stoi(y);
-                        index = row*std::stoi(settings.back())+col; 
-                        xCoord = col*cellWidth + cellWidth/2.0;
-                        yCoord = row*cellWidth + cellWidth/2.0; 
+                        indexBL = row*gridDim+col; //Bottom Left 
+                        indexTL = indexBL+gridDim;
+                        indexTR = indexTL + 1;
+                        indexBR = indexBL + 1;
+                        xCoord = (col+1)*cellWidth;
+                        yCoord = (row+1)*cellWidth; 
+                        // printf("TR: %i TL: %i BL: %i BR: %i\n", indexTR, indexTL, indexBL, indexBR);
                         goals.push_back( new Goal( xCoord, yCoord, 
-                                        cellWidth, index) );
+                                        cellWidth, indexTR, indexTL, 
+                                        indexBL, indexBR) );
                     }
                 }
             }

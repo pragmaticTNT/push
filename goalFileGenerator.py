@@ -6,7 +6,7 @@ from PIL import Image
 
 TMP_FOLDER  = "templates/"
 IMG_FOLDER  = "images/"
-TMP_FILE    = TMP_FOLDER + "grid_goal_template.txt"
+TMP_FILE    = TMP_FOLDER + "grid_goal_template_simple.txt"
 IMG_EXT     = ".jpg"
 FILE_EXT    = ".txt"
 GOAL_EXT    = ".tmp"
@@ -64,6 +64,7 @@ def gen_file(name, rows, cols, num_goals):
 
     ## Write contents of grid goal template
     with open(TMP_FILE, 'r') as readfile:
+        width = 1
         for line in readfile:
             words = line.split()
             ## Edit: current date
@@ -71,14 +72,21 @@ def gen_file(name, rows, cols, num_goals):
                 day = datetime.date
                 line = "# Latest Revision: " + str(day.today()) + "\n"
             ## Edit: settings
-            if words[0] != '#':
-                words[3] = str(num_goals)
-                words[4] = str( round(float(words[1])/rows, 2) )
-                words[-1] = str(rows)
-                line = '\t'.join(words)
+            if len(words) > 0 and words[0] != '#':
+                if words[0] == "width:":
+                    width = float(words[1])
+                if words[0] == "boxNum:":
+                    words[1] = str(num_goals + num_goals/10) # 10% more boxes
+                elif words[0] == "boxSize:":
+                    words[1] = str( round(width/(rows+1), 2) )
+                    print "Box Size:", words[1]
+                elif words[0] == "dimGrid:":
+                    words[1] = str(rows+1)
+                words.append("\n");
+                line = ' '.join(words)
             new_template.write(line)
 
-    new_template.write('\n\n')
+    new_template.write('\n')
 
     ## Write contents of tmp_goal
     with open(goal_file, 'r') as readfile:

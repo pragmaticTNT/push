@@ -1,27 +1,22 @@
 # ==============================
 # ===> [GLC] SHAPE-template <===
 # ==============================
-# Latest Revision: 2016-08-21
-# 
-# ===> Fields <================================================================
-# | (1) lightControllerType: [G]RID 
-# | (2) width (FLOAT+ve): width of experiment world
-# | (3) height (FLOAT+ve): height of experiment world
-# G (4) boxNum (UNSIGNED INT): number of boxes 
-# | (5) boxRadius (FLOAT+ve): for square boxes this is half the side length
-# | (6) boxShape (box_shape_t): [C]ircle, [S]quare, [H]exagon
-# | (7) robotNum (UNSIGNED INT): number of robots
-# | (8) robotRadius (FLOAT+ve): half the side length of a robot
-#
-# | (9) patternNum (UNSIGNED INT): numer of patters (OUT OF SERVICE) 
-# L (10) goalError (FLOAT+ve): acceptable error of boxes from the goal
-# | (11) trialTime (FLOAT+ve): interval to change the light behaviour
-#
-# [GLC] (12) dimGrid (INT): number of grids per row and column (mxm)
-# =============================================================================
-#
-# (1)   (2)   (3)   (4)   (5)   (6)   (7)   (8)   (9)   (10)   (11)   (12)
-G	16	16	33	1.0	C	20	0.25	1	0.2	500	16
+# Latest Revision: DATE
+
+lightControllerType: G ## [G]rid light controller 
+width: 10 
+height: 10 
+boxNum: 36 
+boxSize: 0.59 
+boxShape: C ## [C]ircle, [S]quare, [H]exagon 
+robotNum: 40 
+robotSize: 0.25 
+patternNum: 1 ## (OUT OF SERVICE) 
+goalError: 0.5 
+trialTime: 500 
+dimGrid: 17 
+
+- 
 
 3 4
 3 10

@@ -69,11 +69,19 @@ class Box : public WorldObject {
 class Goal : public WorldObject {
     public:
         bool filled;
-        int index;  // WRT grid Light Controller
+        int index[4];  // WRT grid Light Controller
         float radius;
 
-        Goal( float x, float y, float size, int index = 0 ) : 
-            WorldObject(x,y), radius(size/2), filled(false), index(index){}
+        /***
+         *  1 | 0
+         * -- C --
+         *  2 | 3
+         ***/
+        Goal( float x, float y, float size, 
+              int index0 = 0, int index1 = 0,
+              int index2 = 0, int index3 = 0) : 
+            WorldObject(x,y), radius(size/2), filled(false), 
+            index{index0, index1, index2, index3} {}
         ~Goal(){}
         void WhereAmI( void ){ WorldObject::WhereAmI("Goal"); }
         void Draw( void );
@@ -95,7 +103,7 @@ class Light : public WorldObject {
             float cosAngle = cos( atan2( sqrt(SqrDistanceTo(x,y)), HEIGHT) );
             return on && (cosAngle > cosCritAngle + EPSILON) ? 
                 1.0 - (1.0 - cosAngle)/(1.0 - cosCritAngle) : 
-                EPSILON;
+                EPSILON/10;
         }
         void SetCenter( float x, float y ){ center = b2Vec2(x,y); }
         void SetCenter( b2Vec2 here ){ center = here; }
@@ -105,14 +113,6 @@ class Light : public WorldObject {
 
 // Abstract Class: pure virtual function Update
 class Robot : public WorldObject{ 
-    protected:
-        float luminance;
-
-        // get sensor data
-        bool isBumperPressed( void ); 
-        // send commands
-        void SetSpeed( float x, float y, float angle );
-
     public:
         static float size;
         b2Body *body, *bumper;
@@ -141,22 +141,28 @@ class Pusher : public Robot {
     private:
         typedef enum {
             S_PUSH = 0,
-            S_BACKUP_LONG,
-            S_BACKUP_SHORT,
+            S_BACKUP,
             S_TURN,
             S_DEAD,
             S_COUNT
         } control_state_t;
 
-        static const float PUSH, BACKUP, TURNMAX;
+        static const float PUSH, BACKUP, TURNMAX, DEAD;
         static const float SPEEDX, SPEEDA;
-        static const float DEAD;
         static const float maxspeedx, maxspeeda;
+        static const b2Vec2 frontLightSensor;
+        static const b2Vec2 backLightSensor;
 
         float timeleft;
         control_state_t state;
         float speedx, speeda;
         int turnRight;
+
+        bool isBumperPressed( void ) const; 
+        void SetSpeed( float x, float y, float angle );
+        b2Vec2 GetPhotocell( const b2Vec2& lightSensor ) const{
+            return body->GetWorldPoint(lightSensor);
+        }
 
     public:
         Pusher( World& world, float spawnDist );
@@ -174,7 +180,7 @@ class LightController {
         ~LightController();
         
         virtual float GetIntensity( float x, float y ){ return EPSILON; }
-        virtual void Update( const std::vector<Goal*>& goals, 
+        virtual bool Update( const std::vector<Goal*>& goals, 
                 const std::vector<Box*>& boxes, float timeStep ){}
     protected:
         // -> Update Parameters
@@ -183,14 +189,13 @@ class LightController {
 }; // END LightController Class
 
 class GridLightController : public LightController {
-
     public:
         GridLightController( 
                 const std::vector<Goal*>& goals, 
                 const std::deque<std::string>& settings, 
                 float worldWidth );
         float GetIntensity( float x, float y );
-        void Update( const std::vector<Goal*>& goals, 
+        bool Update( const std::vector<Goal*>& goals, 
                 const std::vector<Box*>& boxes, float timeStep );
 
     private:
@@ -212,9 +217,9 @@ class GridLightController : public LightController {
            TR=0, TC, TL, CL, BL, BC, BR, CR, NBOUR_NUM
         } neighbour_t;
 
-        float dimWorld, dimCell, trialTime, timeElapsed;
-        int dimGrid, maxLayers, activeLayers, currentLayer;
-        int stepTime, stepElapsed;
+        float dimWorld, dimCell, trialTime, timeElapsed, totalTime;
+        int dimGrid, expand;
+        int maxLayer, bdLayer, activeLayers, currentLayer; 
         std::vector< std::vector<int> > layerIndicies;
 
         // Member functions related to grid element access
@@ -239,21 +244,17 @@ class GridLightController : public LightController {
             cell[0] = floor(y/dimCell);  
             cell[1] = floor(x/dimCell);
         }
-        int NextLayer( int now ){
-            return now > 1 ? now-1 : dimGrid-1; 
-        }
         int NeighbourIndex( int cell[2], neighbour_t n );
 
         // Member functions related to update
         void SetLayers( const std::vector<Goal*>& goals );
         void MarkQuadrants( bool quadrants[8], neighbour_t n );
-        void AddLayerIndicies( int currlayer, int cell[2], neighbour_t n );
+        void AddLayerIndicies( int layer, int cell[2], neighbour_t n );
         void SetPixels( void );
-        void Toggle( int layer );
+        void ToggleLayer( int layer );
         void TurnAllLights( bool on );
-        bool BoxOutside( const std::vector<Box*>& boxes );
+        int NumBoxesOutside( const std::vector<Box*>& boxes );
         void PrintLayerDistribution( void );
-        void InitializeLayers( void );
         bool GoalObtained( const std::vector<Box*>& boxes, 
                 const std::vector<Goal*>& goals );
 }; // END GridLightController class
