@@ -20,6 +20,30 @@ typedef enum {
     SHAPE_HEX
 } box_shape_t;
 
+struct WorldSettings{
+    float width;
+    float height;
+    int numBoxes;
+    box_shape_t boxShape;
+    int numRobots;
+    int numPatterns;
+    float avoidLuminance;
+    float bufferLuminance;
+};
+
+struct GridLightControllerSettings{
+    float goalError;
+    float trialTime;
+    unsigned int dimGrid;
+};
+
+struct SimResults{
+    float taskCompletionTime;
+    float robotMoveDistance;
+    // This might be more than one number will put else where
+    // float minMaxBoxDistance; 
+};
+
 class World;
 
 // Abstract Class: pure virtual function Draw
@@ -115,6 +139,7 @@ class Light : public WorldObject {
 class Robot : public WorldObject{ 
     public:
         static float size;
+        float moveAmount;
         b2Body *body, *bumper;
         b2PrismaticJoint* joint;
         
@@ -123,6 +148,7 @@ class Robot : public WorldObject{
             center = body->GetWorldCenter();
             return center;
         }
+        float GetMoveAmount( void ){ return moveAmount; }
         void WhereAmI( void ) { WorldObject::WhereAmI("Robot"); }
         void Draw( void );
         virtual void Update( float timestep, World& world ) = 0; 
@@ -169,31 +195,18 @@ class Pusher : public Robot {
         void Update( float timestep, World& world );
 }; // END Pusher class
 
-class LightController {
+class GridLightController {
     public:
-        std::vector<Light*> lights;
-        // TODO: move these to GLC(make default) then LC(make interface)
-        uint8_t* pixels; 
-        unsigned int pRows, pCols;
-        
-        LightController();
-        ~LightController();
-        
-        virtual float GetIntensity( float x, float y ){ return EPSILON; }
-        virtual bool Update( const std::vector<Goal*>& goals, 
-                const std::vector<Box*>& boxes, float timeStep ){}
-    protected:
-        // -> Update Parameters
-        float goalError; 
-        bool isFilled;
-}; // END LightController Class
+        float totalTime;
+        GridLightControllerSettings* glcSet;
 
-class GridLightController : public LightController {
-    public:
-        GridLightController( 
-                const std::vector<Goal*>& goals, 
-                const std::deque<std::string>& settings, 
-                float worldWidth );
+        // Used for drawing the lights with gradation
+        unsigned int pRows, pCols;
+        uint8_t* pixels; 
+
+        GridLightController( GridLightControllerSettings& glcSet, 
+                const std::vector<Goal*>& goals, float worldWidth );
+        ~GridLightController();
         float GetIntensity( float x, float y );
         bool Update( const std::vector<Goal*>& goals, 
                 const std::vector<Box*>& boxes, float timeStep );
@@ -217,9 +230,13 @@ class GridLightController : public LightController {
            TR=0, TC, TL, CL, BL, BC, BR, CR, NBOUR_NUM
         } neighbour_t;
 
-        float dimWorld, dimCell, trialTime, timeElapsed, totalTime;
-        int dimGrid, expand;
+        int dimGrid;
+        float dimWorld, dimCell;
         int maxLayer, bdLayer, activeLayers, currentLayer; 
+        int expand;
+        float trialTime, timeElapsed;
+
+        std::vector<Light*> lights;
         std::vector< std::vector<int> > layerIndicies;
 
         // Member functions related to grid element access
@@ -261,33 +278,29 @@ class GridLightController : public LightController {
 
 class World {
     public:  
+        static bool showGui;
+        WorldSettings* worldSet;
         b2World* b2world;
-        float width, height;
-        float avoidLuminance, bufferLuminance;
 
-        World( float width, float height, int robotNum, int boxNum,
-                box_shape_t boxShape = SHAPE_CIRC );
-        World( const std::string& goalFile );
+        World( WorldSettings& worldSet, 
+               GridLightControllerSettings& glcSet,
+               const std::vector<Goal*>& goals );
         ~World();
         float GetLuminance( const b2Vec2& here );
-        void Step( float timestep );
+        bool Step( const std::vector<Goal*>& goals,
+                   float timestep, SimResults& results );
 
     protected:
-        int numPatterns, numBoxes, numRobots;
-        box_shape_t boxShape;
         // std::vector<std::vector<Goal*> > goalList;
-        std::vector<Goal*> goals;
         std::vector<Box*> boxes;
         std::vector<Robot*> robots;
         std::vector<Wall*> groundBody;    // Boundary
-        LightController* lightController;
+        GridLightController glc;
 
-        void ParseFile( const std::string& goalFile, 
-                std::deque<std::string>& settings );
-        int ParseSettings( const std::deque<std::string>& settings );
         void AddBoundary( void );
-        void AddRobots( int numRobots );
-        void AddBoxes( int numBoxes, box_shape_t shape );
+        void AddRobots( void );
+        void AddBoxes( void );
+        float GetTotalRobotMovement( void );
 }; // END World class
 
 class GuiWorld : public World {
@@ -299,16 +312,17 @@ class GuiWorld : public World {
         GLFWwindow* window;
         int draw_interval;
 
-        GuiWorld( float width, float height, int numRobots, 
-                int numBoxes, box_shape_t boxShape = SHAPE_CIRC );
-        GuiWorld( const std::string& goalFile );
+        GuiWorld( WorldSettings& worldSet, 
+                  GridLightControllerSettings& glcSet,
+                  const std::vector<Goal*>& goals );
         ~GuiWorld();
-        void Step( float timestep );
+        bool Step( const std::vector<Goal*>& goals,
+                   float timestep, SimResults& results );
         bool RequestShutdown();
     private:
         float tl[3], tr[3], bl[3], br[3];
-        void DrawWorld( void );
-        void DrawTexture( const uint8_t* pixels, const unsigned int cols, 
-                          const unsigned int rows );
+        void DrawTexture( const uint8_t* pixels, unsigned int cols, 
+                unsigned int rows );
 }; // END GuiWorld class
+
 #endif

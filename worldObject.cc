@@ -179,8 +179,9 @@ Box::Box( World& world, float spawnDist, box_shape_t shape ) :
     body->SetLinearDamping( 10.0 );
     body->SetAngularDamping( 10.0 );
     body->SetTransform( b2Vec2(
-                drand48()*(world.width-2*spawnDist) + spawnDist, 
-                drand48()*(world.height-2*spawnDist) + spawnDist), 0 ); 
+        drand48()*((world.worldSet)->width-2*spawnDist) + spawnDist, 
+        drand48()*((world.worldSet)->height-2*spawnDist) + spawnDist), 
+        0 ); 
       
     body->CreateFixture(&fixtureDef);
     center = (body->GetWorldCenter());
@@ -207,7 +208,8 @@ void Light::Draw( void ){
 Robot::Robot( World& world, float x, float y, float angle ) : 
     WorldObject(0,0),
     body( NULL ),
-    joint( NULL ) 
+    joint( NULL ),
+    moveAmount( 0 ),
 {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;

@@ -11,27 +11,6 @@ const uint8_t DARK[] = { 211, 211, 211 };
 const uint8_t LIGHT[] = { 255, 255, 128 };
 const int DELTA[] = { LIGHT[0]-DARK[0], LIGHT[1]-DARK[1], LIGHT[2]-DARK[2] };
 
-// ===> LIGHTCONTROLLER class methods
-LightController::LightController() : 
-    goalError(0),
-    isFilled(false),
-    pixels(NULL),
-    pRows(0),
-    pCols(0)
-{ 
-    Light::radius = 1.0/sqrt(3);
-    Light::cosCritAngle = cos(M_PI/6);
-    pixels = new uint8_t[1];
-}
-
-LightController::~LightController(){
-    for( auto light : lights )
-        delete light;
-    delete pixels;
-}
-// ===> END LIGHTCONTROLLER class methods
-
-
 // ===> GRID LIGHT CONTROLLER class methods
 /***
  * Let "n" be dimGrid. The light grid indexed as follows:
@@ -48,24 +27,21 @@ LightController::~LightController(){
  *
  ***/
 GridLightController::GridLightController( 
-        const std::vector<Goal*>& goals, 
-        const std::deque<std::string>& settings, 
-        float worldWidth ) : 
-    LightController(), 
-    timeElapsed(0),
-    totalTime(0),
+        GridLightControllerSettings& glcSet, 
+        const std::vector<Goal*>& goals, float dimWorld ) : 
+    pixels(NULL),
+    pRows(0),
+    pCols(0),
+    dimGrid(glcSet.dimGrid),
+    dimWorld(dimWorld),
+    dimCell(dimWorld/glcSet.dimGrid),
     maxLayer(0),
     bdLayer(100),
-    expand(-1)
+    expand(-1),
+    timeElapsed(0),
+    totalTime(0),
+    glcSet(&glcSet)
 {
-    size_t numParams = settings.size();
-
-    goalError = numParams > 0 ? std::stof(settings[0]) : 0.2;
-    trialTime = numParams > 1 ? std::stof(settings[1]) : 500;
-    dimGrid = numParams > 2 ? std::stoi(settings[2]) : 11;
-    dimWorld = worldWidth;
-    dimCell = worldWidth / dimGrid;
-
     Light::radius = dimCell;
     Light::cosCritAngle = cos( atan2(Light::radius, Light::HEIGHT) );
  
@@ -82,11 +58,20 @@ GridLightController::GridLightController(
     }
     PrintLayerDistribution();
 
-    pRows = 100;
-    pCols = 100;
-    // std::cout << pRows << " " << pCols << '\n';
-    pixels = new uint8_t[pRows * pCols * FORMAT];   // setup array
-    SetPixels();
+    if( World::showGui ){
+        pRows = 100;
+        pCols = 100;
+        // std::cout << pRows << " " << pCols << '\n';
+        pixels = new uint8_t[pRows * pCols * FORMAT];
+        SetPixels();
+    }
+}
+
+GridLightController::~GridLightController(){
+    for( auto light : lights )
+        delete light;
+    if( World::showGui )
+        delete pixels;
 }
 
 // NOTE: processed cells are marked by turning the light ON!
@@ -306,7 +291,7 @@ bool GridLightController::GoalObtained( const std::vector<Box*>& boxes,
         float minErr = 100;
         for ( Box* box : boxes ){
             float err = sqrt(box->SqrDistanceTo(*goal));
-            if( err < goalError )
+            if( err < glcSet->goalError )
                 goalFilled = true;
             else
                 minErr = std::min(minErr, err);
@@ -375,7 +360,8 @@ bool GridLightController::Update( const std::vector<Goal*>& goals,
             //     --currentLayer; 
             // }
         }
-        SetPixels();
+        if( World::showGui )
+            SetPixels();
     }
     return true;
 }

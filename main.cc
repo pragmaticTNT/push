@@ -6,17 +6,12 @@
 #include <string>
 #include <unistd.h> // usleep(3)
 
-#include "push.hh"
+#include "sim.hh"
 
 /* Long Options Descriptor */
 static struct option longopts[] = {
-    { "width",  required_argument,   NULL,  'w' },
-    { "length",  required_argument,   NULL,  'l' },
-    { "robots",  required_argument,   NULL,  'r' },
     { "boxes",  required_argument,   NULL,  'b' },
-    { "robotsize",  required_argument,   NULL,  'z' },
-    { "boxsize",  required_argument,   NULL,  's' },
-    { "boxshape", required_argument, NULL, 'p' },
+    { "robots",  required_argument,   NULL,  'r' },
     { "goalFileName",  required_argument,   NULL,  'g' },
     { "help",  optional_argument,   NULL,  'h' },
     { NULL, 0, NULL, 0 }
@@ -35,16 +30,11 @@ void PrintReadMe( const char* filename ){
 }
 
 int main( int argc, char* argv[] ){
-    char shapeid;
-    std::string goalfile;
-
-    float width = 5, height = 5;
-    int robots = 20, boxes = 10;
-    box_shape_t shape = SHAPE_CIRC;
-    float32 timestep = 1.0 / 30.0;
+    std::string goalfile = "";
+    int boxes = 0, robots = 0;
 
     int ch=0, optindex=0; 
-    while( (ch = getopt_long(argc, argv, "w:l:r:b:s:z:g:p:h", 
+    while( (ch = getopt_long(argc, argv, "t:s:i:p:b:r:g:h", 
                     longopts, &optindex)) != -1 ){
         switch( ch ) {
             case 0: // long option given
@@ -52,28 +42,9 @@ int main( int argc, char* argv[] ){
                 if (optarg)
                     printf (" with arg %s\n", optarg);
                 break;
-            case 'w':
-                width = atoi( optarg ); break;
-            case 'l':
-                height = atoi( optarg ); break;
-            case 'r':
-                robots = atoi( optarg ); break;
-            case 'b':
-                boxes = atoi( optarg ); break;
-            case 'z':
-                Robot::size = atof( optarg ); break;
-            case 's':
-                Box::size = atof( optarg ); break;
-            case 'g':
-                goalfile = std::string(optarg);
-                break;
-            case 'p':
-                shapeid = toupper(optarg[0]);
-                if( shapeid == 'S')
-                    shape = SHAPE_RECT; 
-                else if( shapeid == 'H')
-                    shape = SHAPE_HEX;
-                break;
+            case 'b': boxes = atoi( optarg ); break;
+            case 'r': robots = atoi( optarg ); break;
+            case 'g': goalfile = std::string(optarg); break;
             case 'h':
                 PrintReadMe("README.md");
                 exit(0);
@@ -82,14 +53,11 @@ int main( int argc, char* argv[] ){
                 exit(1);
         }
     }
-    GuiWorld world = argc < 4 and argc > 1 ? 
-        GuiWorld( "templates/" + goalfile ) :
-        GuiWorld( width, height, robots, boxes, shape );
+    
+    Sim simulator = goalfile.compare("") == 0 ?
+        Sim( boxes, robots ) :
+        Sim( goalfile );
 
-    /* Loop until the user closes the window */
-    while( !world.RequestShutdown() ) {
-        world.Step( timestep );
-    }
-
+    simulator.Run();
     return 0;
 }

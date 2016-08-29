@@ -1,6 +1,6 @@
 # Robot Simulator
 
-Default behaviour popluates a **wxl** world with **r** randomly placed robots of diameter **z**  and **b** randomly placed boxes of diameter **s** and shape **p**, type:
+Default behaviour popluates a **w x l** world with **r** randomly placed robots of diameter **z**  and **b** randomly placed boxes of diameter **s** and shape **p**, type:
 
 <pre>
 make

@@ -17,8 +17,8 @@ const b2Vec2 Pusher::backLightSensor = b2Vec2(-Robot::size/4, 0);
 // ===> PUSHER class methods
 Pusher::Pusher( World& world, float spawnDist ) : 
     Robot( world, 
-        drand48() * (world.width-2*spawnDist) + spawnDist,
-        drand48() * (world.height-2*spawnDist) + spawnDist, 
+        drand48() * ((world.worldSet)->width-2*spawnDist) + spawnDist,
+        drand48() * ((world.worldSet)->height-2*spawnDist) + spawnDist, 
         -M_PI + drand48() * 2.0*M_PI ), 
     state( S_PUSH ),
     timeleft( drand48() * TURNMAX ),
@@ -59,7 +59,7 @@ void Pusher::Update( float timestep, World& world ) {
     switch( state ) {
         case S_PUSH: // no time dependency
             if( isBumperPressed() or 
-                luminanceFront < world.avoidLuminance ){
+                luminanceFront < (world.worldSet)->avoidLuminance ){
                 state = S_BACKUP;
                 timeleft = BACKUP;
                 speedx = -SPEEDX;
@@ -68,7 +68,7 @@ void Pusher::Update( float timestep, World& world ) {
             break;
         case S_BACKUP:
             if( timeleft < 0 or
-                luminanceBack < world.avoidLuminance ){
+                luminanceBack < (world.worldSet)->avoidLuminance ){
                 state = S_TURN;
                 timeleft = drand48() * TURNMAX;
                 speedx = 0;
@@ -76,10 +76,10 @@ void Pusher::Update( float timestep, World& world ) {
             }
             break;
         case S_TURN:
-            bright = luminanceFront > world.avoidLuminance and
-                luminanceBack > world.avoidLuminance;
+            bright = luminanceFront > (world.worldSet)->avoidLuminance and
+                luminanceBack > (world.worldSet)->avoidLuminance;
             facingLight = fabs(luminanceFront - luminanceBack) > 
-                    world.bufferLuminance and 
+                    (world.worldSet)->bufferLuminance and 
                     luminanceFront > luminanceBack;
             if( (bright or facingLight) and 
                 !isBumperPressed() and timeleft < 0){ 
@@ -100,6 +100,9 @@ void Pusher::Update( float timestep, World& world ) {
             printf("invalid control state: %i\n", state); 
             exit(1);
     }
+    if( state == S_PUSH or state == S_BACKUP )
+        moveAmount += fabs(speedx)*timestep; 
+    printf("Current move amount: %.4f\n", moveAmount);
     SetSpeed( speedx, 0, speeda );
 }
 // ===> END PUSHER class methods
