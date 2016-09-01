@@ -1,27 +1,29 @@
 # ==============================
 # ===> [GLC] SHAPE-template <===
 # ==============================
-# Latest Revision: 2016-08-19
-# 
-# ===> Fields <================================================================
-# | (1) lightControllerType: [G]RID 
-# | (2) width (FLOAT+ve): width of experiment world
-# | (3) height (FLOAT+ve): height of experiment world
-# G (4) boxNum (UNSIGNED INT): number of boxes 
-# | (5) boxRadius (FLOAT+ve): for square boxes this is half the side length
-# | (6) boxShape (box_shape_t): [C]ircle, [S]quare, [H]exagon
-# | (7) robotNum (UNSIGNED INT): number of robots
-# | (8) robotRadius (FLOAT+ve): half the side length of a robot
-#
-# | (9) patternNum (UNSIGNED INT): numer of patters (OUT OF SERVICE) 
-# L (10) goalError (FLOAT+ve): acceptable error of boxes from the goal
-# | (11) trialTime (FLOAT+ve): interval to change the light behaviour
-#
-# [GLC] (12) dimGrid (INT): number of grids per row and column (mxm)
-# =============================================================================
-#
-# (1)   (2)   (3)   (4)   (5)   (6)   (7)   (8)   (9)   (10)   (11)   (12)
-G	16	16	3374	0.13	C	20	0.25	1	0.2	500	128
+# Latest Revision: 2016-08-31
+
+showGui: 1 ## 1: true 0: false 
+controlInt: 1 ## 0: do nothing 1: numRobots (also requires showGui: 0) Test 2: numBoxes Test 3: boxDist Test 4: edge or no edge ... TODO: clean up the control a bit, we might even be able to get rid of showGui 
+trials: 1 ## Number of trials per "numRobots" 
+incNumBoxesBy: 0.5 ## Total boxes increased by this percent 
+incNumRobotsBy: 0 ## Number robots added to each "numRobots" 
+steps: 1 ## Number of different IND variable vals to try 
+
+width: 10 
+height: 10 
+boxNum: 5061 
+boxSize: 0.08 
+boxShape: C ## [C]ircle, [S]quare, [H]exagon 
+robotNum: 300 
+robotSize: 0.06 
+
+patternNum: 1 ## (OUT OF SERVICE) 
+goalError: 0.08 
+trialTime: 2 
+dimGrid: 129 
+
+- 
 
 24 28
 24 29

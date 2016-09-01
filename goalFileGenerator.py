@@ -11,7 +11,8 @@ IMG_EXT     = ".jpg"
 FILE_EXT    = ".txt"
 GOAL_EXT    = ".tmp"
 
-CLR_ERR     = 10 # Black is 0, accept small error
+ADD_BOXES   = 0.1   ## Number of boxes increased by this amount
+CLR_ERR     = 10    ## Black is 0, accept small error
 
 ## PURPOSE: Read each pixel of an image and determine if a goal
 ##          should be placed at this (row,col) location. Creates
@@ -65,10 +66,11 @@ def gen_file(name, rows, cols, num_goals):
     ## Write contents of grid goal template
     with open(TMP_FILE, 'r') as readfile:
         width = 1
+        box_size = 0;
         for line in readfile:
             words = line.split()
             ## Edit: current date
-            if len(words) == 3 and words[1] == "Latest":
+            if len(words) > 1 and words[1] == "Latest":
                 day = datetime.date
                 line = "# Latest Revision: " + str(day.today()) + "\n"
             ## Edit: settings
@@ -76,12 +78,18 @@ def gen_file(name, rows, cols, num_goals):
                 if words[0] == "width:":
                     width = float(words[1])
                 if words[0] == "boxNum:":
-                    words[1] = str(num_goals + num_goals/10) # 10% more boxes
+                    # add some percentage more boxes
+                    words[1] = str(num_goals + int(ADD_BOXES*num_goals))
                 elif words[0] == "boxSize:":
-                    words[1] = str( round(width/(rows+1), 2) )
-                    print "Box Size:", words[1]
+                    box_size = round(width/(rows+1), 2)
+                    words[1] = str( box_size )
+                elif words[0] == "robotSize:":
+                    words[1] = str( box_size*0.75 )
                 elif words[0] == "dimGrid:":
-                    words[1] = str(rows+1)
+                    words[1] = str( rows+1 )
+                elif words[0] == "goalError:":
+                    words[1] = str( box_size )
+                    ## print box_size, "goalError:", words[1]
                 words.append("\n");
                 line = ' '.join(words)
             new_template.write(line)

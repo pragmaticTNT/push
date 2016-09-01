@@ -26,7 +26,7 @@ const int DELTA[] = { LIGHT[0]-DARK[0], LIGHT[1]-DARK[1], LIGHT[2]-DARK[2] };
  *  -------- ----------       --------
  *
  ***/
-GridLightController::GridLightController( 
+GridLightController::GridLightController( int controlVal, 
         GridLightControllerSettings& glcSet, 
         const std::vector<Goal*>& goals, float dimWorld ) : 
     pixels(NULL),
@@ -45,18 +45,21 @@ GridLightController::GridLightController(
     Light::radius = dimCell;
     Light::cosCritAngle = cos( atan2(Light::radius, Light::HEIGHT) );
  
-    std::cout << "[GLC] Setting Goals...\n";
+    // std::cout << "[GLC] Setting Goals...\n";
     for( int row = 0; row < dimGrid; ++row )
         for( int col = 0; col < dimGrid; ++col )
             lights.push_back( new Light(GetLightCenter(row, col)) );
 
     SetLayers(goals);
-    printf("[GLC] Layers - Max: %i Bd: %i Active: %i\n", maxLayer, bdLayer, activeLayers);
-    while( currentLayer >= bdLayer ){
-        ToggleLayer(currentLayer);
+    // printf("[GLC] Layers - Max: %i Bd: %i Active: %i\n", maxLayer, bdLayer, activeLayers);
+    if( controlVal == 0 ){
+        for( int layer = maxLayer; layer > 0; --layer )
+            ToggleLayer(layer);
+    } else {
+        ToggleLayer( currentLayer );
         --currentLayer;
     }
-    PrintLayerDistribution();
+    // PrintLayerDistribution();
 
     if( World::showGui ){
         pRows = 100;
@@ -85,6 +88,12 @@ void GridLightController::SetLayers( const std::vector<Goal*>& goals ){
             layerIndicies[0].push_back((goal->index)[i]);
             lights[(goal->index)[i]]->layer = 0;
         }
+    }
+    for( int i = 0; i < dimGrid; ++i ){
+            lights[RowColToIndex(i, 0)]->layer = INT_MAX;
+            lights[RowColToIndex(0, i)]->layer = INT_MAX;
+            lights[RowColToIndex(i, dimGrid-1)]->layer = INT_MAX;
+            lights[RowColToIndex(dimGrid-1, i)]->layer = INT_MAX;
     }
 
     // Setting remaining layers
@@ -119,8 +128,8 @@ void GridLightController::SetLayers( const std::vector<Goal*>& goals ){
 
     // Set maxLayer 
     int layer;
-    for( int row = 0; row < dimGrid; ++row ){
-        for ( int col = 0; col < dimGrid; ++col ){
+    for( int row = 1; row < dimGrid-1; ++row ){
+        for ( int col = 1; col < dimGrid-1; ++col ){
             layer = lights[RowColToIndex(row, col)]->layer;  
             if( layer > maxLayer )
                 maxLayer = layer;
@@ -131,9 +140,26 @@ void GridLightController::SetLayers( const std::vector<Goal*>& goals ){
                 bdLayer = layer;
         }
     }
-    
-    activeLayers = std::min(4, maxLayer-1); // Where should we set this?
+
+    // Set Edges
+    for( int i = 0; i < dimGrid; ++i ){
+        int bottom = RowColToIndex(i, 0);
+        int top = RowColToIndex(i, dimGrid-1); 
+        int left = RowColToIndex(0, i);
+        int right = RowColToIndex(dimGrid-1, i);
+        lights[bottom]->layer = maxLayer;
+        lights[top]->layer = maxLayer;
+        lights[left]->layer = maxLayer;
+        lights[right]->layer = maxLayer;
+        layerIndicies[maxLayer].push_back(bottom);
+        layerIndicies[maxLayer].push_back(top);
+        layerIndicies[maxLayer].push_back(left);
+        layerIndicies[maxLayer].push_back(right);
+    }
     currentLayer = maxLayer;
+
+    // Where should we set this?
+    // activeLayers = std::min(4, maxLayer-1); 
 }
 
 // RETURN: index of n-bour if exists otherwise index of cell 
@@ -285,22 +311,37 @@ void GridLightController::TurnAllLights( bool on ){
 }
 
 bool GridLightController::GoalObtained( const std::vector<Box*>& boxes, 
-        const std::vector<Goal*>& goals ){
+        const std::vector<Goal*>& goals, int controlVal, 
+        std::vector<float>& boxDist ){
     bool goalFilled = false;
+    size_t boxesNearGoals = 0;
+    int count = 0;
+    // TODO: Change this from O(bg) -> O(blog(g)) --- b: NumBoxes,
+    //       g: NumGoals --- using voronoi diagrams and preprocessing
+    for ( Box* box : boxes ){
+        float minErr = 100;
+        for( Goal* goal : goals ){
+            float err = sqrt(box->SqrDistanceTo(*goal));
+            if( err < glcSet->goalError )
+                ++boxesNearGoals;
+            minErr = std::min(minErr, err);
+        }
+        if( controlVal == 3 and count % 10 == 0 ){
+            boxDist.push_back(minErr);
+        }
+        ++count;
+    }
     for( Goal* goal : goals ){
         float minErr = 100;
         for ( Box* box : boxes ){
             float err = sqrt(box->SqrDistanceTo(*goal));
-            if( err < glcSet->goalError )
+            if( err < glcSet->goalError ){
                 goalFilled = true;
-            else
-                minErr = std::min(minErr, err);
+                break;
+            }
         }
-        if( not goalFilled ){
-            // goal->WhereAmI();
-            // std::cout << "Goal Error: " << minErr << "\n";
+        if( !goalFilled )
             return false;
-        }
         goalFilled = false;
     }
     return true;
@@ -333,23 +374,27 @@ float GridLightController::GetIntensity( float x, float y ){
     }
 }
 
-bool GridLightController::Update( const std::vector<Goal*>& goals, 
-        const std::vector<Box*>& boxes, float timeStep ){
+bool GridLightController::Update( int controlVal, 
+        const std::vector<Goal*>& goals, 
+        const std::vector<Box*>& boxes, 
+        float timeStep, std::vector<float>& boxDist){
     totalTime += timeStep;
     timeElapsed += timeStep;
-    if( timeElapsed > trialTime ){
-        // bool boxOutside = BoxOutside(boxes); 
+    if( timeElapsed > glcSet->trialTime ){
         timeElapsed = 0;
-        // std::cout << "(GLC) Changing lights configuration... \n";
         // Check that all boxes in shadow region
-        if( GoalObtained(boxes, goals) ){
+        if( controlVal == 3 ){
+            std::cout << "@ time: " << totalTime << "\n"; 
+            boxDist.push_back( totalTime );
+        }
+        if( GoalObtained(boxes, goals, controlVal, boxDist) ){ 
             std::cout << "[GLC] Goal Obtained!\n";
-            std::cout << "[GLC] Totoal Time Elapsed: " << totalTime << "\n";
-            ToggleLayer(1);
-            ToggleLayer(2);
+            std::cout << "[GLC] Total Time Elapsed: " << totalTime << "\n";
             return false;
-        } else if( NumBoxesOutside(boxes) >= goals.size() and 
+        } else if( controlVal != 0 and 
+                   NumBoxesOutside(boxes) >= goals.size() and 
                    currentLayer > 0 ){
+            // std::cout << "(GLC) Changing lights configuration... \n";
             ToggleLayer(currentLayer);
             currentLayer += expand;
             // if( currentLayer == 0 ){
@@ -359,9 +404,11 @@ bool GridLightController::Update( const std::vector<Goal*>& goals,
             //     expand = -1;
             //     --currentLayer; 
             // }
+            if( World::showGui )
+                SetPixels();
         }
-        if( World::showGui )
-            SetPixels();
+    } else if( totalTime > 10000 ){ // Hard Stop
+        return false;
     }
     return true;
 }

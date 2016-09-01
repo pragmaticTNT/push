@@ -1,16 +1,33 @@
-#include <iostream>
-#include <fstream>
 #include <sstream>
 
 #include "sim.hh"
 
+void DataWriter::WriteToFile( bool endLine, const std::string& msg ){
+    if( endLine )
+        out << msg << "\n";
+    else
+        out << msg << ", ";
+}
+
+void DataWriter::WriteLineToFile( const std::vector<float>& line ){
+    for( size_t i = 0; i < line.size(); ++i ){
+        if( i != line.size()-1 )
+            out << std::to_string(line[i]) << ", ";
+        else
+            out << std::to_string(line[i]) << "\n";
+    }
+}
+
 // Default Simulator: 
 //  May only specify number of boxes and robots all other 
 //  parameters are fixed.
-Sim::Sim( int numBoxes, int numRobots ) :
-    timestep(1.0/30.0)
+Sim::Sim( int numBoxes, int numRobots ) : 
+    timestep(1.0/30.0),
+    fileNameExt("")
 {
     World::showGui = true;
+
+    simSet.controlVal = 0;
 
     worldSet.width = 10;
     worldSet.height = 10;
@@ -26,56 +43,81 @@ Sim::Sim( int numBoxes, int numRobots ) :
     glcSet.dimGrid = 1;
 }
 
-Sim::Sim( const std::string& goalFile ) : 
-    timestep(1.0/30.0)
-{ 
-    ParseFile(goalFile); 
-    std::cout << "===> Show GUI? " << World::showGui << "\n";
-    // Open file
-}
+Sim::Sim( const std::string goalFile ) : 
+    timestep(1.0/30.0),
+    fileName(goalFile),
+    fileNameExt("templates/" + goalFile)
+{ ParseFile(); }
 
 Sim::~Sim(){
     for( Goal* goal : goals )
         delete goal;
-    // Close file: you have to be very careful here if something
-    //  breaks and you exist without closing the file properly there
-    //  might be issues...
 }
 
 void Sim::Run( void ){
     if( World::showGui ){
-        GuiWorld world( worldSet, glcSet, goals );
-        while( !world.RequestShutdown() )
-            world.Step( goals, timestep, results );
+        GuiWorld world( simSet.controlVal, worldSet, glcSet, goals );
+        DataWriter boxDist("data/boxDist_" + fileName);
+        std::cout << "===> BEGIN EXPERIMENT...\n";
+        std::vector<float> boxDistErr;
+        while( !world.RequestShutdown() and 
+                world.Step(simSet.controlVal, goals, timestep, 
+                           results, boxDistErr) ){
+            if( simSet.controlVal == 3 and boxDistErr.size() ){
+                boxDist.WriteLineToFile( boxDistErr ); 
+                boxDistErr.clear();
+            }
+        }
+        boxDist.WriteLineToFile( boxDistErr ); 
+        std::cout << "===> FINISH EXPERIMENT!\n";
     } else {
-        for( int r = 0; r < simSet.stepsNumRobots; ++r ){
-            worldSet.numRobots += simSet.incNumRobotsBy;
-            for( int trial = 0; trial < simSet.numTrials; ++trial ){
-                GuiWorld world( worldSet, glcSet, goals );
+        DataWriter taskData("data/taskTime_" + fileName);
+        DataWriter robotsData("data/robotsMove_" + fileName);
+        // std::cout << "Task Data is open? " << taskData.IsOpen() << "\n";
+        std::cout << "===> BEGIN WRITING TO FILE...\n";
+        // int indepVar = simSet.controlVal == 4 ? 
+        //     worldSet.numBoxes :
+        //     worldSet.numRobots;
+        // int incAmount = simSet.controlVal == 4 ?
+        //     simSet.incNumBoxesBy :
+        //     simSet.incNumRobotsBy;
+        std::cout << "===  control: " << simSet.controlVal << " numBoxes: " << worldSet.numBoxes << " numRobots: " << worldSet.numRobots << "\n";
+        for( int r = 0; r < simSet.steps; ++r ){
+            bool endLine = false;
+            std::vector<float> boxDist;
+            //taskData.WriteToFile( endLine, std::to_string(indepVar) );
+            //robotsData.WriteToFile( endLine, std::to_string(indepVar) );
+            for( int trial = simSet.numTrials; trial > 0; --trial ){
+                std::cout << "===  [" << worldSet.numRobots << "," 
+                    << simSet.numTrials-trial+1 << "]\n"; 
+                endLine = trial == 1;
+                GuiWorld world( simSet.controlVal, worldSet, glcSet, goals );
 
                 /* Loop until the user closes the window */
                 while( !world.RequestShutdown() and 
-                       !world.Step(goals, timestep, results) ){}
-
-                // Processing the data in results
-                ParseResults();
+                        world.Step( simSet.controlVal, goals, 
+                                    timestep, results, boxDist ) ){}
+                taskData.WriteToFile( endLine, 
+                        std::to_string(results.taskCompletionTime) );
+                robotsData.WriteToFile( endLine, 
+                        std::to_string(results.robotMoveDistance) );
             }
+            worldSet.numRobots += simSet.incNumRobotsBy;
         }
+        std::cout << "===> FINISH WRITING TO FILE!\n";
     }
 }
 
-void Sim::ParseFile( const std::string& fileName ){
+void Sim::ParseFile( void ){
     bool setParameters = false;
     int paramIndex = 0;
     int row, col, indexTR, indexTL, indexBL, indexBR;
     float cellWidth, xCoord, yCoord;
     std::string separator = "-"; // deliminates settings and goals
 
-    if( fileName.empty() ){ // DEFAULT
-        std::cout << "[WARNING] No file name given. Using DEFAULT.\n";
-    } else {                // READ FROM FILE
+    if( !fileNameExt.empty() ){ // DEFAULT
         std::string goal, x, y, param;
-        std::ifstream goalFile(fileName.c_str());
+        std::ifstream goalFile(fileNameExt.c_str());
         if( goalFile.is_open() ){
             while( std::getline(goalFile, goal) ){
                 std::stringstream ss(goal);
@@ -110,52 +152,60 @@ void Sim::ParseFile( const std::string& fileName ){
             }
             goalFile.close();
         } else {
-            std::cout << "[ERR] Unable to open file: " << fileName << std::endl;
+            SimException e("[ERR]", "---Sim(ParseFile)---",
+                    "Unable to open file", fileNameExt );
+            throw e;
         }
+    } else {                // READ FROM FILE
+        SimException e("[ERR]", "---Sim(ParseFile)---",
+                "File name is empty", "" );
+        throw e;
     }
 }
 
 void Sim::ParseSettings( int index, const std::string& value ){
     switch( index ){
         case 0: World::showGui = std::stoi(value) == 1; break;
-        case 1: simSet.numTrials = std::stoi(value); break;
-        case 2: simSet.incNumRobotsBy = std::stoi(value); break;
-        case 3: simSet.stepsNumRobots = std::stoi(value); break;
-        case 4: 
+        case 1: simSet.controlVal = std::stoi(value); break;
+        case 2: simSet.numTrials = std::stoi(value); break;
+        case 3: simSet.incNumBoxesBy = std::stof(value); break;
+        case 4: simSet.incNumRobotsBy = std::stoi(value); break;
+        case 5: simSet.steps = std::stoi(value); break;
+        case 6: 
             worldSet.avoidLuminance = 0.2;
             worldSet.avoidLuminance = 0.4;
             worldSet.width = std::stof(value); 
             break;
-        case 5: worldSet.height = std::stof(value); break; 
-        case 6: worldSet.numBoxes = std::stoi(value); break;
-        case 7: Box::size = std::stof(value); break;
-        case 8:
+        case 7: worldSet.height = std::stof(value); break; 
+        case 8: worldSet.numBoxes = std::stoi(value); break;
+        case 9: Box::size = std::stof(value); break;
+        case 10:
             switch(value.c_str()[0]){
                 case 'C': case 'c':
                     worldSet.boxShape = SHAPE_CIRC;
                     break;
                 case 'S': case 's':
-                    worldSet.boxShape = SHAPE_RECT
+                    worldSet.boxShape = SHAPE_RECT;
                     break;
                 case 'H': case 'h':
                     worldSet.boxShape = SHAPE_HEX;
                     break;
                 default:
-                    std::cout << "[ERR-World] invalid box shape: " << 
-                        value.c_str() << "\n";
-                    exit(1);
+                    SimException e( "[ERR]", 
+                            "---Sim(ParseSettings)---",
+                            "Invalid Box Shape", 
+                            value.c_str() );
+                    throw e;
             } break;
-        case 9: worldSet.numRobots = std::stoi(value); break;
-        case 10: Robot::size = std::stof(value); break;
-        case 11: worldSet.numPatterns = std::stoi(value); break; 
-        case 12: glcSet.goalError = std::stof(value); break;
-        case 13: glcSet.trialTime = std::stof(value); break;
-        case 14: glcSet.dimGrid = std::stoi(value); break;
+        case 11: worldSet.numRobots = std::stoi(value); break;
+        case 12: Robot::size = std::stof(value); break;
+        case 13: worldSet.numPatterns = std::stoi(value); break; 
+        case 14: glcSet.goalError = std::stof(value); break;
+        case 15: glcSet.trialTime = std::stof(value); break;
+        case 16: glcSet.dimGrid = std::stoi(value); break;
         default:
-            std::cout << "[ERR] SIM: (ParseSettings) index out of bounds.\n";
+            SimException e( "[ERR]", "---Sim(ParseSettings)---",
+                    "Index out of bounds", "" );
+            throw e;
     }
-}
-
-void Sim::ParseResults( void ){
-
 }

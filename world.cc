@@ -13,18 +13,19 @@ bool GuiWorld::step = false;
 int GuiWorld::skip = 1;
 
 // ===> WORLD class methods
-World::World( WorldSettings& worldSet,
-              GridLightControllerSettings& glcSet,
-              const std::vector<Goal*>& goals ):
+World::World( int controlVal, WorldSettings& worldSet,
+        GridLightControllerSettings& glcSet,
+        const std::vector<Goal*>& goals ):
     worldSet(&worldSet),
-    glc( GridLightController(glcSet, goals, worldSet.width) ),
+    glc( GridLightController(controlVal, glcSet, goals, worldSet.width) ),
     b2world( new b2World( b2Vec2( 0,0 )) )
 {
-    AddBoundary();
+    AddBoundary( controlVal );
     AddRobots();
     AddBoxes();
 
-    printf("Starting %.2f x %.2f world. Robots: %i Boxes: %i\n", 
+    if( World::showGui )
+        printf("Starting %.2f x %.2f world. Robots: %i Boxes: %i\n", 
             worldSet.width, worldSet.height, 
             worldSet.numRobots, worldSet.numBoxes);
 }
@@ -38,13 +39,15 @@ World::~World(){
         delete wall;
 }
 
-void World::AddBoundary( void ){
+void World::AddBoundary( int controlVal ){
     b2BodyDef groundBodyDef;
     groundBodyDef.type = b2_staticBody;
     b2PolygonShape groundBox;
     groundBox.SetAsBox( worldSet->width/2.0, 0.05f );    
     b2PolygonShape edgeBox;
     edgeBox.SetAsBox( worldSet->width/2.0, SPAWN*sqrt(2)/2.0 + EPSILON );
+    b2PolygonShape strut;
+    strut.SetAsBox( Box::size/2.0, Box::size/2.0 ); 
 
     float halfSpawn = SPAWN/2.0;
     
@@ -64,20 +67,25 @@ void World::AddBoundary( void ){
         b2Vec3( worldSet->width-halfSpawn, 
                 worldSet->height-halfSpawn, 
                 3*M_PI/4.0 ), 
-        b2Vec3( halfSpawn, worldSet->height-halfSpawn, M_PI/4.0 ) 
+        b2Vec3( halfSpawn, worldSet->height-halfSpawn, M_PI/4.0 ),
+        b2Vec3( worldSet->width/2, 0, M_PI/4.0 ),
+        b2Vec3( 0, worldSet->width/2, M_PI/4.0 ),
+        b2Vec3( worldSet->width/2, worldSet->width, M_PI/4.0 ),
+        b2Vec3( worldSet->width, worldSet->width/2, M_PI/4.0 ),
+
     };
 
     for( size_t i = 0; i < boundary.size(); ++i ){
         b2Body* wallBody = b2world->CreateBody(&groundBodyDef); 
-        if( i < boundary.size()/2 )
+        if( i < boundary.size()/3 ){
             wallBody->CreateFixture(&groundBox, 0.05f); // Param2 is density
-        else
-            wallBody->CreateFixture(&edgeBox, 0.05f); // Param2 is density
+        } else if( i >= boundary.size()/3 and i < 2*boundary.size()/3 ){
+            wallBody->CreateFixture(&edgeBox, 0.05f);
+        } else if( false ){ // Anti-boxonedge... does not work...
+            wallBody->CreateFixture(&strut, 0.05f);
+        }
         groundBody.push_back( new Wall(wallBody, boundary[i]) );
     }
-    
-    // TODO: set the no spawn boundary property based on wall size
-    // SPAWN = 0; // Do some calculations
 }
 
 void World::AddRobots( void ){
@@ -102,8 +110,9 @@ float World::GetLuminance( const b2Vec2& here ){
     return glc.GetIntensity( here.x, here.y );
 }
 
-bool World::Step( const std::vector<Goal*>& goals, 
-                  float timestep, SimResults& results ){
+bool World::Step( int controlVal, const std::vector<Goal*>& goals, 
+        float timestep, SimResults& results, 
+        std::vector<float>& boxDist ){
     const int32 velocityIterations = 6;
     const int32 positionIterations = 2;
 
@@ -116,7 +125,7 @@ bool World::Step( const std::vector<Goal*>& goals,
     b2world->Step( timestep, velocityIterations, 
             positionIterations);   
 
-    if( !glc.Update(goals, boxes, timestep) ){
+    if( !glc.Update(controlVal, goals, boxes, timestep, boxDist) ){
         results.taskCompletionTime = glc.totalTime;
         results.robotMoveDistance = GetTotalRobotMovement();
         return false;
@@ -163,10 +172,10 @@ void key_callback( GLFWwindow* window, int key, int scancode, int action,
         }
 }
 
-GuiWorld::GuiWorld( WorldSettings& worldSet, 
-                    GridLightControllerSettings& glcSet,
-                    const std::vector<Goal*>& goals ):
-    World( worldSet, glcSet, goals ),
+GuiWorld::GuiWorld( int controlVal, WorldSettings& worldSet, 
+        GridLightControllerSettings& glcSet,
+        const std::vector<Goal*>& goals ):
+    World( controlVal, worldSet, glcSet, goals ),
     window(NULL),
     draw_interval( skip )
 { 
@@ -174,15 +183,17 @@ GuiWorld::GuiWorld( WorldSettings& worldSet,
         srand48( time(NULL) );  
         /* Initialize the gui library */
         if (!glfwInit()) {
-            std::cout << "Failed glfwInit()" << std::endl;
-            exit(1);
+            SimException e("[ERR]", "---GuiWorld(CONSTRUCTOR)---",
+                    "Failed", "glfwInit()" );
+            throw e;
         }
 
         /* Create a windowed mode window and its OpenGL context */
         window = glfwCreateWindow(1000, 1000, "Robot Sim", NULL, NULL);
         if (!window) {
-            glfwTerminate();
-            exit(2);
+            SimException e("[ERR]", "---GuiWorld(CONSTRUCTOR)---",
+                    "Failed", "glfwTerminate()" );
+            throw e;
         }
 
         /* Make the window's context current */
@@ -251,11 +262,13 @@ void GuiWorld::DrawTexture( const uint8_t* pixels,
     glDisable(GL_TEXTURE_2D);
 }
 
-bool GuiWorld::Step( const std::vector<Goal*>& goals,
-                     float timestep, SimResults& results ){
-    if( !paused || step ) {
-        if( !World::Step(goals, timestep, results) )
+bool GuiWorld::Step( int controlVal, const std::vector<Goal*>& goals, 
+        float timestep, SimResults& results,
+        std::vector<float>& boxDist){
+    if( !paused || step || !World::showGui ) {
+        if( !World::Step(controlVal, goals, timestep, results, boxDist) ){
             return false;
+        }
         step = false;
         //	paused = true;
     }

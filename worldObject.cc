@@ -209,7 +209,7 @@ Robot::Robot( World& world, float x, float y, float angle ) :
     WorldObject(0,0),
     body( NULL ),
     joint( NULL ),
-    moveAmount( 0 ),
+    moveAmount( 0 )
 {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;

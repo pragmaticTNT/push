@@ -1,16 +1,21 @@
 # ==============================
 # ===> [GLC] SHAPE-template <===
 # ==============================
-# Latest Revision: DATE
+# Latest Revision: 2016-08-29
 
-lightControllerType: G ## [G]rid light controller 
+showGui: 1 ## 1: true 0: false 
+experimentTrials: 1 ## Number of trials per "numRobots" 
+incNumRobotsBy: 0 ## Number robots added to each "numRobots" 
+stepsNumRobots: 1 ## Number of different "numRobots" to try 
+
 width: 10 
 height: 10 
 boxNum: 36 
 boxSize: 0.59 
 boxShape: C ## [C]ircle, [S]quare, [H]exagon 
-robotNum: 40 
+robotNum: 40  
 robotSize: 0.25 
+
 patternNum: 1 ## (OUT OF SERVICE) 
 goalError: 0.5 
 trialTime: 500 

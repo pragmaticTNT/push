@@ -50,8 +50,8 @@ void Pusher::Update( float timestep, World& world ) {
     timeleft -= timestep;
 
     if( luminanceFront < DEAD and luminanceBack < DEAD ){
-        state = S_DEAD;
-        speedx = 0;
+        state = S_BACKUP;
+        speedx = -SPEEDX;
         speeda = 0;
     }
 
@@ -67,8 +67,9 @@ void Pusher::Update( float timestep, World& world ) {
             }
             break;
         case S_BACKUP:
-            if( timeleft < 0 or
-                luminanceBack < (world.worldSet)->avoidLuminance ){
+            if( luminanceFront > (world.worldSet)->avoidLuminance and
+                    (timeleft < 0 or
+                luminanceBack < (world.worldSet)->avoidLuminance) ){
                 state = S_TURN;
                 timeleft = drand48() * TURNMAX;
                 speedx = 0;
@@ -102,7 +103,7 @@ void Pusher::Update( float timestep, World& world ) {
     }
     if( state == S_PUSH or state == S_BACKUP )
         moveAmount += fabs(speedx)*timestep; 
-    printf("Current move amount: %.4f\n", moveAmount);
+    // printf("Current move amount: %.4f\n", moveAmount);
     SetSpeed( speedx, 0, speeda );
 }
 // ===> END PUSHER class methods

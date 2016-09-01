@@ -1,10 +1,11 @@
 #ifndef PUSH_H
 #define PUSH_H
 
+#include <math.h>
 #include <stdio.h>
 
-#include <math.h>
 #include <deque>
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,24 @@ struct SimResults{
     float robotMoveDistance;
     // This might be more than one number will put else where
     // float minMaxBoxDistance; 
+};
+
+class SimException : public std::exception {
+    public:
+        SimException( std::string level, std::string whichClass, 
+                std::string msg, std::string value ) : 
+            level(level),
+            whichClass(whichClass),
+            msg(msg),
+            value(value){}
+        virtual const char* what( void ) const noexcept{
+            std::string tmp = level + " " + whichClass + " " + 
+                              msg + ": " + value;
+            return tmp.c_str();
+        }
+    private:
+        // Levels: WARN, ERR
+        std::string level, whichClass, msg, value;
 };
 
 class World;
@@ -204,13 +223,14 @@ class GridLightController {
         unsigned int pRows, pCols;
         uint8_t* pixels; 
 
-        GridLightController( GridLightControllerSettings& glcSet, 
+        GridLightController( int controlVal,
+                GridLightControllerSettings& glcSet, 
                 const std::vector<Goal*>& goals, float worldWidth );
         ~GridLightController();
         float GetIntensity( float x, float y );
-        bool Update( const std::vector<Goal*>& goals, 
-                const std::vector<Box*>& boxes, float timeStep );
-
+        bool Update( int controlVal, const std::vector<Goal*>& goals, 
+                const std::vector<Box*>& boxes, float timeStep,
+                std::vector<float>& boxDist );
     private:
         /***
          *  Enumerates all the neighbours of the cell CC.
@@ -234,7 +254,7 @@ class GridLightController {
         float dimWorld, dimCell;
         int maxLayer, bdLayer, activeLayers, currentLayer; 
         int expand;
-        float trialTime, timeElapsed;
+        float timeElapsed;
 
         std::vector<Light*> lights;
         std::vector< std::vector<int> > layerIndicies;
@@ -273,7 +293,8 @@ class GridLightController {
         int NumBoxesOutside( const std::vector<Box*>& boxes );
         void PrintLayerDistribution( void );
         bool GoalObtained( const std::vector<Box*>& boxes, 
-                const std::vector<Goal*>& goals );
+                const std::vector<Goal*>& goals, int controlVal,
+                std::vector<float>& boxDist );
 }; // END GridLightController class
 
 class World {
@@ -282,13 +303,14 @@ class World {
         WorldSettings* worldSet;
         b2World* b2world;
 
-        World( WorldSettings& worldSet, 
+        World( int controlVal, WorldSettings& worldSet,
                GridLightControllerSettings& glcSet,
                const std::vector<Goal*>& goals );
         ~World();
         float GetLuminance( const b2Vec2& here );
-        bool Step( const std::vector<Goal*>& goals,
-                   float timestep, SimResults& results );
+        bool Step( int controlVal, const std::vector<Goal*>& goals,
+                   float timestep, SimResults& results,
+                   std::vector<float>& boxDist );
 
     protected:
         // std::vector<std::vector<Goal*> > goalList;
@@ -297,7 +319,7 @@ class World {
         std::vector<Wall*> groundBody;    // Boundary
         GridLightController glc;
 
-        void AddBoundary( void );
+        void AddBoundary( int controlVal );
         void AddRobots( void );
         void AddBoxes( void );
         float GetTotalRobotMovement( void );
@@ -312,12 +334,13 @@ class GuiWorld : public World {
         GLFWwindow* window;
         int draw_interval;
 
-        GuiWorld( WorldSettings& worldSet, 
+        GuiWorld( int controlVal, WorldSettings& worldSet, 
                   GridLightControllerSettings& glcSet,
                   const std::vector<Goal*>& goals );
         ~GuiWorld();
-        bool Step( const std::vector<Goal*>& goals,
-                   float timestep, SimResults& results );
+        bool Step( int controlVal, const std::vector<Goal*>& goals,
+                   float timestep, SimResults& results,
+                   std::vector<float>& boxDist);
         bool RequestShutdown();
     private:
         float tl[3], tr[3], bl[3], br[3];

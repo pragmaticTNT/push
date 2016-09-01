@@ -32,32 +32,36 @@ void PrintReadMe( const char* filename ){
 int main( int argc, char* argv[] ){
     std::string goalfile = "";
     int boxes = 0, robots = 0;
-
     int ch=0, optindex=0; 
-    while( (ch = getopt_long(argc, argv, "t:s:i:p:b:r:g:h", 
-                    longopts, &optindex)) != -1 ){
-        switch( ch ) {
-            case 0: // long option given
-                printf( "option %s given", longopts[optindex].name );
-                if (optarg)
-                    printf (" with arg %s\n", optarg);
-                break;
-            case 'b': boxes = atoi( optarg ); break;
-            case 'r': robots = atoi( optarg ); break;
-            case 'g': goalfile = std::string(optarg); break;
-            case 'h':
-                PrintReadMe("README.md");
-                exit(0);
-            case '?':  
-                std::cout << "[ERR] unhandled option: " << ch << std::endl;
-                exit(1);
-        }
-    }
-    
-    Sim simulator = goalfile.compare("") == 0 ?
-        Sim( boxes, robots ) :
-        Sim( goalfile );
 
-    simulator.Run();
-    return 0;
+    try {
+        while( (ch = getopt_long(argc, argv, "b:r:g:h", 
+                        longopts, &optindex)) != -1 ){
+            switch( ch ) {
+                case 0: // long option given
+                    printf( "option %s given", longopts[optindex].name );
+                    if (optarg)
+                        printf (" with arg %s\n", optarg);
+                    break;
+                case 'b': boxes = atoi( optarg ); break;
+                case 'r': robots = atoi( optarg ); break;
+                case 'g': goalfile = std::string(optarg); break;
+                case 'h': PrintReadMe("README.md"); break;
+                case '?': throw "[ERR] unhandled option: " + ch;
+            }
+        }
+        
+        Sim simulator = goalfile.compare("") == 0 ?
+            Sim( boxes, robots ) :
+            Sim( goalfile );
+
+        simulator.Run();
+    } catch (const std::exception& e){
+        std::cerr << e.what() << std::endl;
+        return EXIT_FAILURE;
+    } catch (const char* msg){
+        std::cerr << msg << std::endl;
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
 }
