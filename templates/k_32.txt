@@ -3,12 +3,12 @@
 # ==============================
 # Latest Revision: 2016-09-01
 
-showGui: 1          ## 1: true 0: false 
-controlInt: 1       ## 0: do nothing 
-trials: 1           ## Number of trials per "numRobots" 
+showGui: 0          ## 1: true 0: false 
+controlVal: 0       ## 0: do nothing 
+trials: 100         ## Number of trials per "numRobots" 
 incNumBoxesBy: 0.5  ## Total boxes increased by this percent 
-incNumRobotsBy: 0   ## Number robots added to each "numRobots" 
-steps: 1            ## Number of different IND variable vals to try 
+incNumRobotsBy: 10  ## Number robots added to each "numRobots" 
+steps: 8            ## Number of different IND variable vals to try 
 
 width: 10 
 height: 10 
