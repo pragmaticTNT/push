@@ -56,9 +56,9 @@ Sim::~Sim(){
 
 void Sim::Run( void ){
     if( World::showGui ){
-        GuiWorld world( simSet.controlVal, worldSet, glcSet, goals );
         DataWriter boxDist("data/boxDist_" + fileName);
         std::cout << "===> BEGIN EXPERIMENT...\n";
+        GuiWorld world( simSet.controlVal, worldSet, glcSet, goals );
         std::vector<float> boxDistErr;
         while( !world.RequestShutdown() and 
                 world.Step(simSet.controlVal, goals, timestep, 
@@ -75,34 +75,37 @@ void Sim::Run( void ){
         DataWriter robotsData("data/robotsMove_" + fileName);
         // std::cout << "Task Data is open? " << taskData.IsOpen() << "\n";
         std::cout << "===> BEGIN WRITING TO FILE...\n";
-        // int indepVar = simSet.controlVal == 4 ? 
-        //     worldSet.numBoxes :
-        //     worldSet.numRobots;
-        // int incAmount = simSet.controlVal == 4 ?
-        //     simSet.incNumBoxesBy :
-        //     simSet.incNumRobotsBy;
-        std::cout << "===  control: " << simSet.controlVal << " numBoxes: " << worldSet.numBoxes << " numRobots: " << worldSet.numRobots << "\n";
+        int indepVar = simSet.controlVal == 4 ? 
+            worldSet.numBoxes :
+            worldSet.numRobots;
+        int incAmount = simSet.controlVal == 4 ?
+            simSet.incNumBoxesBy :
+            simSet.incNumRobotsBy;
         for( int r = 0; r < simSet.steps; ++r ){
             bool endLine = false;
             std::vector<float> boxDist;
-            //taskData.WriteToFile( endLine, std::to_string(indepVar) );
-            //robotsData.WriteToFile( endLine, std::to_string(indepVar) );
+            taskData.WriteToFile( endLine, std::to_string(indepVar) );
+            robotsData.WriteToFile( endLine, std::to_string(indepVar) );
             for( int trial = simSet.numTrials; trial > 0; --trial ){
-                std::cout << "===  [" << worldSet.numRobots << "," 
+                std::cout << "===  [" << indepVar << "," 
                     << simSet.numTrials-trial+1 << "]\n"; 
                 endLine = trial == 1;
                 GuiWorld world( simSet.controlVal, worldSet, glcSet, goals );
 
                 /* Loop until the user closes the window */
                 while( !world.RequestShutdown() and 
-                        world.Step( simSet.controlVal, goals, 
-                                    timestep, results, boxDist ) ){}
+                        world.Step(simSet.controlVal, goals, timestep, 
+                                   results, boxDist) ){}
                 taskData.WriteToFile( endLine, 
                         std::to_string(results.taskCompletionTime) );
                 robotsData.WriteToFile( endLine, 
                         std::to_string(results.robotMoveDistance) );
             }
-            worldSet.numRobots += simSet.incNumRobotsBy;
+            if( simSet.controlVal == 4 )
+                worldSet.numBoxes += simSet.incNumBoxesBy;
+            else
+                worldSet.numRobots += simSet.incNumRobotsBy;
+            indepVar += incAmount;
         }
         std::cout << "===> FINISH WRITING TO FILE!\n";
     }

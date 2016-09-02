@@ -1,21 +1,21 @@
 # ==============================
 # ===> [GLC] SHAPE-template <===
 # ==============================
-# Latest Revision: 2016-08-31
+# Latest Revision: 2016-09-01
 
-showGui: 0          ## 1: true 0: false 
-controlInt: 1       ## TODO: clean up BIG MESS! 
+showGui: 1          ## 1: true 0: false 
+controlInt: 1       ## 0: do nothing 
 trials: 1           ## Number of trials per "numRobots" 
-incNumBoxesBy: 19   ## Total boxes increased by this percent 
+incNumBoxesBy: 0.5  ## Total boxes increased by this percent 
 incNumRobotsBy: 0   ## Number robots added to each "numRobots" 
-steps: 2            ## Number of different IND variable vals to try 
+steps: 1            ## Number of different IND variable vals to try 
 
 width: 10 
 height: 10 
-boxNum: 261         ## That's 140% of actual 
+boxNum: 277 
 boxSize: 0.3 
 boxShape: C         ## [C]ircle, [S]quare, [H]exagon 
-robotNum: 40 
+robotNum: 20 
 robotSize: 0.225 
 
 patternNum: 1       ## (OUT OF SERVICE) 

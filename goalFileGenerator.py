@@ -11,7 +11,7 @@ IMG_EXT     = ".jpg"
 FILE_EXT    = ".txt"
 GOAL_EXT    = ".tmp"
 
-ADD_BOXES   = 0.1   ## Number of boxes increased by this amount
+ADD_BOXES   = 0.5   ## Number of boxes increased by this amount
 CLR_ERR     = 10    ## Black is 0, accept small error
 
 ## PURPOSE: Read each pixel of an image and determine if a goal

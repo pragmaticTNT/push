@@ -61,20 +61,20 @@ GridLightController::GridLightController( int controlVal,
     }
     // PrintLayerDistribution();
 
-    if( World::showGui ){
-        pRows = 100;
-        pCols = 100;
-        // std::cout << pRows << " " << pCols << '\n';
-        pixels = new uint8_t[pRows * pCols * FORMAT];
-        SetPixels();
-    }
+    // if( World::showGui ){
+    pRows = 100;
+    pCols = 100;
+    // std::cout << pRows << " " << pCols << '\n';
+    pixels = new uint8_t[pRows * pCols * FORMAT];
+    SetPixels();
+    // }
 }
 
 GridLightController::~GridLightController(){
     for( auto light : lights )
         delete light;
-    if( World::showGui )
-        delete pixels;
+    // if( World::showGui )
+    delete pixels;
 }
 
 // NOTE: processed cells are marked by turning the light ON!
@@ -388,13 +388,12 @@ bool GridLightController::Update( int controlVal,
             boxDist.push_back( totalTime );
         }
         if( GoalObtained(boxes, goals, controlVal, boxDist) ){ 
-            std::cout << "[GLC] Goal Obtained!\n";
-            std::cout << "[GLC] Total Time Elapsed: " << totalTime << "\n";
+            // std::cout << "[GLC] Goal Obtained!\n";
+            std::cout << "===  Total Time Elapsed: " << totalTime << "\n";
             return false;
         } else if( controlVal != 0 and 
                    NumBoxesOutside(boxes) >= goals.size() and 
                    currentLayer > 0 ){
-            // std::cout << "(GLC) Changing lights configuration... \n";
             ToggleLayer(currentLayer);
             currentLayer += expand;
             // if( currentLayer == 0 ){
@@ -404,8 +403,8 @@ bool GridLightController::Update( int controlVal,
             //     expand = -1;
             //     --currentLayer; 
             // }
-            if( World::showGui )
-                SetPixels();
+            // if( World::showGui )
+            SetPixels();
         }
     } else if( totalTime > 10000 ){ // Hard Stop
         return false;

@@ -179,8 +179,8 @@ GuiWorld::GuiWorld( int controlVal, WorldSettings& worldSet,
     window(NULL),
     draw_interval( skip )
 { 
+    srand48( time(NULL) );  
     if( World::showGui ){
-        srand48( time(NULL) );  
         /* Initialize the gui library */
         if (!glfwInit()) {
             SimException e("[ERR]", "---GuiWorld(CONSTRUCTOR)---",
