@@ -1,0 +1,26 @@
+# ==============================
+# ===> [GLC] SHAPE-template <===
+# ==============================
+# Latest Revision: DATE
+
+showGui: 1          ## 1: true  0: false (FALSE to record data)
+controlInt: 1       ## 0: No Strategy 1: Strategy 3: Puck Distro
+trials: 1           ## Number of trials per "numRobots"
+incNumBoxesBy: 0    ## Total boxes increased by this percent
+incNumRobotsBy: 0   ## Number robots added to each "numRobots"
+steps: 1            ## Num of Independent variable vals to try
+
+width: 10 
+height: 10 
+boxNum: 10 
+boxSize: 0.8 
+boxShape: C         ## [C]ircle, [S]quare, [H]exagon
+robotNum: 100 
+robotSize: 0.25
+
+patternNum: 1       ## (OUT OF SERVICE) 
+goalError: 0.5 
+trialTime: 5
+dimGrid: 11
+
+-
