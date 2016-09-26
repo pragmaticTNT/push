@@ -18,21 +18,18 @@ void DataWriter::WriteLineToFile( const std::vector<float>& line ){
     }
 }
 
-// Default Simulator: 
-//  May only specify number of boxes and robots all other 
-//  parameters are fixed.
-Sim::Sim( int numBoxes, int numRobots ) : 
+Sim::Sim( int numPucks, int numRobots ) : 
     timestep(1.0/30.0),
     fileNameExt("")
 {
     World::showGui = true;
 
-    simSet.controlVal = 0;
+    simSet.controlVal = -1;
 
     worldSet.width = 10;
     worldSet.height = 10;
-    worldSet.numBoxes = numBoxes;
-    worldSet.boxShape = SHAPE_CIRC;
+    worldSet.numPucks = numPucks;
+    worldSet.puckShape = SHAPE_CIRC;
     worldSet.numRobots = numRobots;
     worldSet.numPatterns = 1;
     worldSet.avoidLuminance = 0.2;
@@ -56,34 +53,40 @@ Sim::~Sim(){
 
 void Sim::Run( void ){
     if( World::showGui ){
-        DataWriter boxDist("data/boxDist_" + fileName);
-        std::cout << "===> BEGIN EXPERIMENT...\n";
         GuiWorld world( simSet.controlVal, worldSet, glcSet, goals );
-        std::vector<float> boxDistErr;
-        while( !world.RequestShutdown() and 
-                world.Step(simSet.controlVal, goals, timestep, 
-                           results, boxDistErr) ){
-            if( simSet.controlVal == 3 and boxDistErr.size() ){
-                boxDist.WriteLineToFile( boxDistErr ); 
-                boxDistErr.clear();
+        std::vector<float> puckDistErr;
+        if( simSet.controlVal == 3 ){
+            DataWriter puckDist("data/puckDist_" + fileName);
+            std::cout << "===> BEGIN EXPERIMENT...\n";
+
+            while( !world.RequestShutdown() and 
+                    world.Step(simSet.controlVal, timestep, goals, 
+                               results, puckDistErr) ){
+                    puckDist.WriteLineToFile( puckDistErr ); 
+                    puckDistErr.clear();
             }
+
+            puckDist.WriteLineToFile( puckDistErr ); 
+            std::cout << "===> FINISH EXPERIMENT!\n";
+        } else {
+            while( !world.RequestShutdown() and 
+                    world.Step( simSet.controlVal, timestep, goals,
+                            results, puckDistErr) ){}
         }
-        boxDist.WriteLineToFile( boxDistErr ); 
-        std::cout << "===> FINISH EXPERIMENT!\n";
     } else {
         DataWriter taskData("data/taskTime_" + fileName);
         DataWriter robotsData("data/robotsMove_" + fileName);
         // std::cout << "Task Data is open? " << taskData.IsOpen() << "\n";
         std::cout << "===> BEGIN WRITING TO FILE...\n";
         int indepVar = simSet.controlVal == 4 ? 
-            worldSet.numBoxes :
+            worldSet.numPucks :
             worldSet.numRobots;
         int incAmount = simSet.controlVal == 4 ?
-            simSet.incNumBoxesBy :
+            simSet.incNumPucksBy :
             simSet.incNumRobotsBy;
         for( int r = 0; r < simSet.steps; ++r ){
             bool endLine = false;
-            std::vector<float> boxDist;
+            std::vector<float> puckDist;
             taskData.WriteToFile( endLine, std::to_string(indepVar) );
             robotsData.WriteToFile( endLine, std::to_string(indepVar) );
             for( int trial = simSet.numTrials; trial > 0; --trial ){
@@ -94,15 +97,15 @@ void Sim::Run( void ){
 
                 /* Loop until the user closes the window */
                 while( !world.RequestShutdown() and 
-                        world.Step(simSet.controlVal, goals, timestep, 
-                                   results, boxDist) ){}
+                        world.Step(simSet.controlVal, timestep, goals, 
+                                   results, puckDist) ){}
                 taskData.WriteToFile( endLine, 
                         std::to_string(results.taskCompletionTime) );
                 robotsData.WriteToFile( endLine, 
                         std::to_string(results.robotMoveDistance) );
             }
             if( simSet.controlVal == 4 )
-                worldSet.numBoxes += simSet.incNumBoxesBy;
+                worldSet.numPucks += simSet.incNumPucksBy;
             else
                 worldSet.numRobots += simSet.incNumRobotsBy;
             indepVar += incAmount;
@@ -118,7 +121,7 @@ void Sim::ParseFile( void ){
     float cellWidth, xCoord, yCoord;
     std::string separator = "-"; // deliminates settings and goals
 
-    if( !fileNameExt.empty() ){ // DEFAULT
+    if( !fileNameExt.empty() ){ // READ FROM FILE
         std::string goal, x, y, param;
         std::ifstream goalFile(fileNameExt.c_str());
         if( goalFile.is_open() ){
@@ -159,7 +162,7 @@ void Sim::ParseFile( void ){
                     "Unable to open file", fileNameExt );
             throw e;
         }
-    } else {                // READ FROM FILE
+    } else { // DEFAULT 
         SimException e("[ERR]", "---Sim(ParseFile)---",
                 "File name is empty", "" );
         throw e;
@@ -171,7 +174,7 @@ void Sim::ParseSettings( int index, const std::string& value ){
         case 0: World::showGui = std::stoi(value) == 1; break;
         case 1: simSet.controlVal = std::stoi(value); break;
         case 2: simSet.numTrials = std::stoi(value); break;
-        case 3: simSet.incNumBoxesBy = std::stof(value); break;
+        case 3: simSet.incNumPucksBy = std::stof(value); break;
         case 4: simSet.incNumRobotsBy = std::stoi(value); break;
         case 5: simSet.steps = std::stoi(value); break;
         case 6: 
@@ -180,23 +183,23 @@ void Sim::ParseSettings( int index, const std::string& value ){
             worldSet.width = std::stof(value); 
             break;
         case 7: worldSet.height = std::stof(value); break; 
-        case 8: worldSet.numBoxes = std::stoi(value); break;
-        case 9: Box::size = std::stof(value); break;
+        case 8: worldSet.numPucks = std::stoi(value); break;
+        case 9: Puck::size = std::stof(value); break;
         case 10:
             switch(value.c_str()[0]){
                 case 'C': case 'c':
-                    worldSet.boxShape = SHAPE_CIRC;
+                    worldSet.puckShape = SHAPE_CIRC;
                     break;
                 case 'S': case 's':
-                    worldSet.boxShape = SHAPE_RECT;
+                    worldSet.puckShape = SHAPE_RECT;
                     break;
                 case 'H': case 'h':
-                    worldSet.boxShape = SHAPE_HEX;
+                    worldSet.puckShape = SHAPE_HEX;
                     break;
                 default:
                     SimException e( "[ERR]", 
                             "---Sim(ParseSettings)---",
-                            "Invalid Box Shape", 
+                            "Invalid Puck Shape", 
                             value.c_str() );
                     throw e;
             } break;

@@ -10,13 +10,18 @@
 
 /* Long Options Descriptor */
 static struct option longopts[] = {
-    { "boxes",  required_argument,   NULL,  'b' },
+    { "pucks",  required_argument,   NULL,  'b' },
     { "robots",  required_argument,   NULL,  'r' },
     { "goalFileName",  required_argument,   NULL,  'g' },
     { "help",  optional_argument,   NULL,  'h' },
     { NULL, 0, NULL, 0 }
 };
 
+/***
+ * PURPOSE: Display help information
+ * INPUT:   filename - name of the READ ME file of the project
+ * OUTPUT:  (None)
+ ***/
 void PrintReadMe( const char* filename ){
     std::cout << '\n';
     std::ifstream readme( filename );
@@ -31,7 +36,7 @@ void PrintReadMe( const char* filename ){
 
 int main( int argc, char* argv[] ){
     std::string goalfile = "";
-    int boxes = 0, robots = 0;
+    int pucks = 0, robots = 0;
     int ch=0, optindex=0; 
 
     try {
@@ -43,7 +48,7 @@ int main( int argc, char* argv[] ){
                     if (optarg)
                         printf (" with arg %s\n", optarg);
                     break;
-                case 'b': boxes = atoi( optarg ); break;
+                case 'b': pucks = atoi( optarg ); break;
                 case 'r': robots = atoi( optarg ); break;
                 case 'g': goalfile = std::string(optarg); break;
                 case 'h': PrintReadMe("README.md"); break;
@@ -52,7 +57,7 @@ int main( int argc, char* argv[] ){
         }
         
         Sim simulator = goalfile.compare("") == 0 ?
-            Sim( boxes, robots ) :
+            Sim( pucks, robots ) :
             Sim( goalfile );
 
         simulator.Run();

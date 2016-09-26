@@ -17,22 +17,23 @@ World::World( int controlVal, WorldSettings& worldSet,
         GridLightControllerSettings& glcSet,
         const std::vector<Goal*>& goals ):
     worldSet(&worldSet),
+    spawn(1/PORTION_INTERIOR * worldSet.width),
     glc( GridLightController(controlVal, glcSet, goals, worldSet.width) ),
     b2world( new b2World( b2Vec2( 0,0 )) )
 {
     AddBoundary( controlVal );
     AddRobots();
-    AddBoxes();
+    AddPucks();
 
     if( World::showGui )
-        printf("Starting %.2f x %.2f world. Robots: %i Boxes: %i\n", 
+        printf("Starting %.2f x %.2f world. Robots: %i Pucks: %i\n", 
             worldSet.width, worldSet.height, 
-            worldSet.numRobots, worldSet.numBoxes);
+            worldSet.numRobots, worldSet.numPucks);
 }
 
 World::~World(){
-    for( auto box : boxes )
-        delete box;
+    for( auto puck : pucks )
+        delete puck;
     for( auto robot : robots )
         delete robot;
     for( auto wall : groundBody )
@@ -40,17 +41,48 @@ World::~World(){
 }
 
 void World::AddBoundary( int controlVal ){
+    float width = worldSet->width;
+    float height = worldSet->height;
     b2BodyDef groundBodyDef;
     groundBodyDef.type = b2_staticBody;
-    b2PolygonShape groundBox;
-    groundBox.SetAsBox( worldSet->width/2.0, 0.05f );    
-    b2PolygonShape edgeBox;
-    edgeBox.SetAsBox( worldSet->width/2.0, SPAWN*sqrt(2)/2.0 + EPSILON );
-    b2PolygonShape strut;
-    strut.SetAsBox( Box::size/2.0, Box::size/2.0 ); 
-
-    float halfSpawn = SPAWN/2.0;
     
+    // set interior puck container
+    b2PolygonShape interiorBox;
+    b2FixtureDef interiorFixture;
+    interiorBox.SetAsBox( width/3.0, 0.05f );     
+    interiorFixture.shape = &interiorBox;     
+    // prevent collision with puck-retaining strings 
+    interiorFixture.filter.categoryBits = 
+        static_cast<uint16_t>(_entityCategory::PUCKBOUNDARY);
+    interiorFixture.filter.maskBits = 
+        static_cast<uint16_t>(_entityCategory::PUCK); // only pucks
+
+    // Set exterior puck container
+    b2PolygonShape exteriorBox;
+    b2FixtureDef exteriorFixture;
+    exteriorBox.SetAsBox( width/2.0, 0.05f );    
+    exteriorFixture.shape = &exteriorBox;
+    exteriorFixture.filter.categoryBits = 
+        static_cast<uint16_t>(_entityCategory::ROBOTBOUNDARY);
+    exteriorFixture.filter.maskBits = 
+        static_cast<uint16_t>(_entityCategory::ROBOT) ||
+        static_cast<uint16_t>(_entityCategory::PUCK); // contain everything
+
+    // Set exterior container edges: not required due to string
+    /***
+    b2PolygonShape edge;
+    b2FixtureDef edgeFixture;
+    edge.SetAsBox( width/2.0, spawn*sqrt(2)/2.0 + EPSILON );
+    edgeFixture.shape = &edge;
+    edgeFixture.filter.categoryBits = 
+        static_cast<uint16_t>(_entityCategory::ROBOTBOUNDARY);
+    edgeFixture.filter.maskBits = 
+        static_cast<uint16_t>(_entityCategory::ROBOT) || 
+        static_cast<uint16_t>(_entityCategory::PUCK); // contain everything
+    ***/
+ 
+    float halfSpawn = spawn/2.0;
+
     // -> Sets the wall arrangements
     // Elements of b2Vec3 cooresponds to:
     // x: center x coordinate
@@ -58,50 +90,48 @@ void World::AddBoundary( int controlVal ){
     // z: angle
 
     std::vector<b2Vec3> boundary = {
-        b2Vec3( worldSet->width/2, 0, 0 ),
-        b2Vec3( worldSet->width/2, worldSet->height, 0 ), 
-        b2Vec3( 0, worldSet->height/2, M_PI/2.0 ), 
-        b2Vec3( worldSet->width, worldSet->height/2, M_PI/2.0 ), 
-        b2Vec3( halfSpawn, halfSpawn, 3*M_PI/4.0 ), 
-        b2Vec3( worldSet->width-halfSpawn, halfSpawn, M_PI/4.0 ), 
-        b2Vec3( worldSet->width-halfSpawn, 
-                worldSet->height-halfSpawn, 
-                3*M_PI/4.0 ), 
-        b2Vec3( halfSpawn, worldSet->height-halfSpawn, M_PI/4.0 ),
-        b2Vec3( worldSet->width/2, 0, M_PI/4.0 ),
-        b2Vec3( 0, worldSet->width/2, M_PI/4.0 ),
-        b2Vec3( worldSet->width/2, worldSet->width, M_PI/4.0 ),
-        b2Vec3( worldSet->width, worldSet->width/2, M_PI/4.0 ),
+        b2Vec3( width/2, height/PORTION_INTERIOR, 0 ),    
+        b2Vec3( width/2, height-height/PORTION_INTERIOR, 0 ),    
+        b2Vec3( width/PORTION_INTERIOR, height/2, M_PI/2.0 ),    
+        b2Vec3( width-width/PORTION_INTERIOR, height/2, M_PI/2.0 ),
 
+        b2Vec3( width/2, 0, 0 ),
+        b2Vec3( width/2, height, 0 ), 
+        b2Vec3( 0, height/2, M_PI/2.0 ), 
+        b2Vec3( width, height/2, M_PI/2.0 ), 
+
+        // b2Vec3( halfSpawn, halfSpawn, 3*M_PI/4.0 ), 
+        // b2Vec3( width-halfSpawn, halfSpawn, M_PI/4.0 ), 
+        // b2Vec3( width-halfSpawn, height-halfSpawn, 3*M_PI/4.0 ), 
+        // b2Vec3( halfSpawn, height-halfSpawn, M_PI/4.0 ),
     };
 
     for( size_t i = 0; i < boundary.size(); ++i ){
         b2Body* wallBody = b2world->CreateBody(&groundBodyDef); 
-        if( i < boundary.size()/3 ){
-            wallBody->CreateFixture(&groundBox, 0.05f); // Param2 is density
-        } else if( i >= boundary.size()/3 and i < 2*boundary.size()/3 ){
-            wallBody->CreateFixture(&edgeBox, 0.05f);
-        } else if( false ){ // Anti-boxonedge... does not work...
-            wallBody->CreateFixture(&strut, 0.05f);
+        if( i < boundary.size()/2 ){
+            wallBody->CreateFixture(&interiorFixture);
+        } else {
+            wallBody->CreateFixture(&exteriorFixture);
+            // wallBody->CreateFixture(&edgeFixture);
         }
-        groundBody.push_back( new Wall(wallBody, boundary[i]) );
+        groundBody.push_back( new Wall(wallBody, boundary[i]) ); 
     }
 }
 
 void World::AddRobots( void ){
     for( int i = 0; i < worldSet->numRobots; ++i )
-        robots.push_back( new Pusher( *this, SPAWN ) );
+        robots.push_back( new Pusher( *this, spawn ) );
 }
 
-void World::AddBoxes( void ){
-    for( int i = 0; i < worldSet->numBoxes; ++i )
-        boxes.push_back( new Box(*this, SPAWN, worldSet->boxShape) );
+void World::AddPucks( void ){
+    for( int i = 0; i < worldSet->numPucks; ++i )
+        pucks.push_back( new Puck(*this, spawn, worldSet->puckShape) );
 }
 
 float World::GetTotalRobotMovement( void ){
     float totalMovement = 0;
     for( Robot* robot : robots ){
-        totalMovement += robot->GetMoveAmount();
+        totalMovement += robot->moveAmount;
     }
     return totalMovement;
 }
@@ -110,9 +140,10 @@ float World::GetLuminance( const b2Vec2& here ){
     return glc.GetIntensity( here.x, here.y );
 }
 
-bool World::Step( int controlVal, const std::vector<Goal*>& goals, 
-        float timestep, SimResults& results, 
-        std::vector<float>& boxDist ){
+bool World::Step( int controlVal, float timestep,  
+        const std::vector<Goal*>& goals, 
+        SimResults& results, 
+        std::vector<float>& puckDist ){
     const int32 velocityIterations = 6;
     const int32 positionIterations = 2;
 
@@ -125,7 +156,7 @@ bool World::Step( int controlVal, const std::vector<Goal*>& goals,
     b2world->Step( timestep, velocityIterations, 
             positionIterations);   
 
-    if( !glc.Update(controlVal, goals, boxes, timestep, boxDist) ){
+    if( !glc.Update(controlVal, goals, pucks, timestep, puckDist) ){
         results.taskCompletionTime = glc.totalTime;
         results.robotMoveDistance = GetTotalRobotMovement();
         return false;
@@ -226,8 +257,7 @@ GuiWorld::~GuiWorld( void ){
 }
 
 void GuiWorld::DrawTexture( const uint8_t* pixels, 
-        unsigned int cols, unsigned int rows )
-{
+        unsigned int cols, unsigned int rows ){
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
@@ -262,11 +292,12 @@ void GuiWorld::DrawTexture( const uint8_t* pixels,
     glDisable(GL_TEXTURE_2D);
 }
 
-bool GuiWorld::Step( int controlVal, const std::vector<Goal*>& goals, 
-        float timestep, SimResults& results,
-        std::vector<float>& boxDist){
+bool GuiWorld::Step( int controlVal, float timestep,  
+        const std::vector<Goal*>& goals, 
+        SimResults& results,
+        std::vector<float>& puckDist){
     if( !paused || step || !World::showGui ) {
-        if( !World::Step(controlVal, goals, timestep, results, boxDist) ){
+        if( !World::Step(controlVal, timestep, goals, results, puckDist) ){
             return false;
         }
         step = false;
@@ -286,8 +317,8 @@ bool GuiWorld::Step( int controlVal, const std::vector<Goal*>& goals,
             goal->Draw();
 
         // ===> DRAW: field objects
-        for ( Box* box : boxes )
-            box->Draw();
+        for ( Puck* puck : pucks )
+            puck->Draw();
         for ( Robot* robot : robots )
             robot->Draw();
         for ( Wall* wall : groundBody ){ 

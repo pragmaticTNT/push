@@ -3,8 +3,8 @@
 #include "push.hh"
 
 // ===> Set Static Variables
-float Box::size = 0.25;
-float Robot::size = 0.5;
+float Puck::size = 0.25;
+float Robot::size = 0.3;
 float Light::HEIGHT = 1.0;
 float Light::radius;
 float Light::cosCritAngle;
@@ -19,7 +19,7 @@ const float c_black[3]      = {0.0, 0.0, 0.0};
 
 
 // ===> WORLDOBJECT class methods
-void WorldObject::DrawDisk( b2Vec2 center, float radius ) { 
+void WorldObject::DrawDisk( b2Vec2 center, float radius ){ 
     if( radius > EPSILON ){
         const int num_segments = 32.0 * sqrtf(radius);
         const float theta = 2 * M_PI / float(num_segments); 
@@ -47,7 +47,7 @@ void WorldObject::DrawDisk( b2Vec2 center, float radius ) {
     }
 }
 
-void WorldObject::DrawCircle( b2Vec2 center, float radius) {
+void WorldObject::DrawCircle( b2Vec2 center, float radius){
     const int lineAmount = 32.0 * sqrtf(radius);
     float twicePi = M_PI * 2.0f;
 
@@ -61,7 +61,7 @@ void WorldObject::DrawCircle( b2Vec2 center, float radius) {
     glEnd();
 }
 
-void WorldObject::DrawBody( b2Body* b, const float color[3] ) {
+void WorldObject::DrawBody( b2Body* b, const float color[3] ){
     for (b2Fixture* f = b->GetFixtureList(); f; f = f->GetNext()){
         switch( f->GetType() ){
             case b2Shape::e_circle:
@@ -133,8 +133,8 @@ void Goal::Draw( void ){
 // ===> END GOAL class methods
 
 
-// ===> BOX class methods
-Box::Box( World& world, float spawnDist, box_shape_t shape ) :
+// ===> PUCK class methods
+Puck::Puck( World& world, float spawnDist, puck_shape_t shape ) :
     WorldObject(0,0),
     body(NULL) 
 {
@@ -168,9 +168,14 @@ Box::Box( World& world, float spawnDist, box_shape_t shape ) :
             break;
     }
 
-    fixtureDef.density = 2.0;
+    fixtureDef.density = 2.0; 
+    // std::cout << "Mass if proper: " << 0.21/(4*Puck::size*Puck::size) << "\n"; 
     fixtureDef.friction = 1.0;
     fixtureDef.restitution = 0.1; 
+    fixtureDef.filter.categoryBits =
+        static_cast<uint16_t>(_entityCategory::PUCK);
+    fixtureDef.filter.maskBits = 0xFFFF; //everything
+    // PUCK | ROBOT | PUCKBOUNDARY | ROBOTBOUNDARY; // everything
     
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
@@ -187,11 +192,11 @@ Box::Box( World& world, float spawnDist, box_shape_t shape ) :
     center = (body->GetWorldCenter());
 }
 
-void Box::Draw( void ){
+void Puck::Draw( void ){
     GetCenter();
     DrawBody( body, c_blue );
 }
-// ===> END BOX class methods
+// ===> END PUCK class methods
 
 
 // ===> LIGHT class methods
@@ -221,7 +226,8 @@ Robot::Robot( World& world, float x, float y, float angle ) :
 
     b2FixtureDef fixtureDef;
     fixtureDef.shape = &dynamicBox;    
-    fixtureDef.density = 10;
+    fixtureDef.density = 10; //3/(4*Robot::size*Robot::size);
+    // fixtureDef.density = 10;
     fixtureDef.friction = 1.0;
     body->CreateFixture(&fixtureDef);
 

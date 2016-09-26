@@ -39,6 +39,7 @@ void Pusher::SetSpeed( float x, float y, float angle ) {
 void Pusher::Update( float timestep, World& world ) {
     // ===> IMPLEMENT ROBOT BEHAVIOUR WITH A STATE MACHINE
     bool bright, facingLight;
+    // There are two light sensors one in-front and one in-back
     b2Vec2 frontPhotocell = GetPhotocell(Pusher::frontLightSensor);
     b2Vec2 backPhotocell = GetPhotocell(Pusher::backLightSensor);
     float luminanceFront = world.GetLuminance(frontPhotocell);

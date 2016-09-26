@@ -13,38 +13,51 @@
 #include <GLFW/glfw3.h>
 
 static const float EPSILON = 10e-5; // float comparison error
-static const float SPAWN = 0.5; // spawn distance away from wall 
+static const float PORTION_INTERIOR = 6.0; // spawn distance away from wall 
 
+// PUCK SHAPES
 typedef enum {
     SHAPE_RECT=0,
     SHAPE_CIRC,
     SHAPE_HEX
-} box_shape_t;
+} puck_shape_t;
 
+// SIMULATOR COLLISION CATEGORIES
+enum class _entityCategory{
+    PUCKBOUNDARY = 0x1,
+    ROBOTBOUNDARY = 0x2,
+    ROBOT = 0x4,
+    PUCK = 0x8
+};
+
+// SETTINGS FOR THE WORLD CLASSES
 struct WorldSettings{
     float width;
     float height;
-    int numBoxes;
-    box_shape_t boxShape;
+    int numPucks;
+    puck_shape_t puckShape;
     int numRobots;
     int numPatterns;
     float avoidLuminance;
     float bufferLuminance;
 };
 
+// SETTINGS FOR THE GRID LIGHT CONTROLLER CLASSES
 struct GridLightControllerSettings{
     float goalError;
     float trialTime;
     unsigned int dimGrid;
 };
 
+// RESULTS FOR A SIMULATION
 struct SimResults{
     float taskCompletionTime;
     float robotMoveDistance;
     // This might be more than one number will put else where
-    // float minMaxBoxDistance; 
+    // float minMaxPuckDistance; 
 };
 
+// EXCEPTIONS
 class SimException : public std::exception {
     public:
         SimException( std::string level, std::string whichClass, 
@@ -65,7 +78,13 @@ class SimException : public std::exception {
 
 class World;
 
-// Abstract Class: pure virtual function Draw
+/***
+ * Abstract Class - pure virtual function Draw
+ * PURPOSE: Base class of objects that appear in the simulation;
+ *          these includes Puck, Goal, Light, Robot and Wall. 
+ *          Allows the use of abstraction to draw and find the
+ *          center of all such objects.
+ ***/
 class WorldObject{ 
     protected:
         b2Vec2 center;
@@ -95,27 +114,28 @@ class WorldObject{
         virtual void Draw( void ) = 0;
 }; // END WorldObject class
 
-class Box : public WorldObject {
+class Puck : public WorldObject {
     public:
         static float size; 
         b2Body* body;
         
-        Box( World& world, float spawnDist, box_shape_t shape = SHAPE_CIRC );
+        Puck( World& world, float spawnDist, puck_shape_t shape = SHAPE_CIRC );
         b2Vec2 GetCenter( void ){
             center = body->GetWorldCenter();
             return center;
         }
-        void WhereAmI( void ){ WorldObject::WhereAmI("Box"); }
+        void WhereAmI( void ){ WorldObject::WhereAmI("Puck"); }
         void Draw( void );
-}; // END Box class
+}; // END Puck class
 
 class Goal : public WorldObject {
     public:
-        bool filled;
-        int index[4];  // WRT grid Light Controller
+        bool filled;    // Is the goal filled?
+        int index[4];   // WRT grid Light Controller
         float radius;
 
         /***
+         * QUADRANTS:
          *  1 | 0
          * -- C --
          *  2 | 3
@@ -154,11 +174,13 @@ class Light : public WorldObject {
         void Draw( void );
 }; // END Light class
 
-// Abstract Class: pure virtual function Update
+/***
+ * Abstract Class: pure virtual function Update
+ ***/
 class Robot : public WorldObject{ 
     public:
         static float size;
-        float moveAmount;
+        float moveAmount;   // Total distance traved by robot
         b2Body *body, *bumper;
         b2PrismaticJoint* joint;
         
@@ -167,7 +189,6 @@ class Robot : public WorldObject{
             center = body->GetWorldCenter();
             return center;
         }
-        float GetMoveAmount( void ){ return moveAmount; }
         void WhereAmI( void ) { WorldObject::WhereAmI("Robot"); }
         void Draw( void );
         virtual void Update( float timestep, World& world ) = 0; 
@@ -227,10 +248,15 @@ class GridLightController {
                 GridLightControllerSettings& glcSet, 
                 const std::vector<Goal*>& goals, float worldWidth );
         ~GridLightController();
+        /***
+         * PURPOSE: Get the light intensity in a particular location.
+         * INPUT:   x and y location in the grid
+         * OUTPUT:  (float) light luminosity
+         ***/
         float GetIntensity( float x, float y );
         bool Update( int controlVal, const std::vector<Goal*>& goals, 
-                const std::vector<Box*>& boxes, float timeStep,
-                std::vector<float>& boxDist );
+                const std::vector<Puck*>& pucks, float timeStep,
+                std::vector<float>& puckDist );
     private:
         /***
          *  Enumerates all the neighbours of the cell CC.
@@ -253,7 +279,7 @@ class GridLightController {
         int dimGrid;
         float dimWorld, dimCell;
         int maxLayer, bdLayer, activeLayers, currentLayer; 
-        int expand;
+        int expand;     // How shadow zone changes
         float timeElapsed;
 
         std::vector<Light*> lights;
@@ -281,20 +307,64 @@ class GridLightController {
             cell[0] = floor(y/dimCell);  
             cell[1] = floor(x/dimCell);
         }
+        /***
+         * PURPOSE: returns index of n-bour if exists otherwise 
+         *          index of cell 
+         * INPUT:   cell (array<int>) - row and column index of 
+         *                              the cell
+         *          n (neighbour_t) - which neighbour to index
+         * OUTPUT:  index of neighbour (int)
+         ***/
         int NeighbourIndex( int cell[2], neighbour_t n );
 
         // Member functions related to update
+        /***
+         * PURPOSE: Goes through each layer outside the goal files,
+         *          starting from the closest layer, and determine
+         *          which cell are in which layers.
+         * INPUT:   goals (vector<Goal*>) - vector of goals 
+         * OUTPUT:  (None) 
+         ***/
         void SetLayers( const std::vector<Goal*>& goals );
+        /***
+         * PURPOSE: (Helper Function) used in "SetLayers" to help
+         *          determine which quadrants to mark. This depends
+         *          on the location of the neighbour goal cells.
+         * INPUT:   quadrants (array<boo>) - which neighbour cells are 
+         *          occupied by goal cells
+         * OUTPUT:  (None)
+         ***/
         void MarkQuadrants( bool quadrants[8], neighbour_t n );
         void AddLayerIndicies( int layer, int cell[2], neighbour_t n );
+        /***
+         * PURPOSE: sets the values for the array used by the 
+         *          OpenGL textures 
+         * INPUT:   (None)
+         * OUTPUT:  (None)
+         ***/
         void SetPixels( void );
         void ToggleLayer( int layer );
         void TurnAllLights( bool on );
-        int NumBoxesOutside( const std::vector<Box*>& boxes );
+        int NumPucksOutside( const std::vector<Puck*>& pucks );
         void PrintLayerDistribution( void );
-        bool GoalObtained( const std::vector<Box*>& boxes, 
+        /***
+         * PURPOSE: Determines if the goal has been obtained by
+         *          checking the minimum distance from a puck of 
+         *          each goal. SIDE EFFECT: records the distribution
+         *          of the pucks.
+         * INPUT:   pucks (vector<Puck>) - all pucks
+         *          goals (vector<Goals>) - all goals
+         *          controlVal(INT) - if we the simulator is 
+         *                            recording puck distributions
+         *                            (controlVal == 3) then 
+         *                            store these
+         *          puckDist (vector<float>) - where to store the 
+         *                                     puck distributions
+         * OUTPUT:  (bool) if the goal has been obtained or not
+         ***/
+        bool GoalObtained( const std::vector<Puck*>& pucks, 
                 const std::vector<Goal*>& goals, int controlVal,
-                std::vector<float>& boxDist );
+                std::vector<float>& puckDist );
 }; // END GridLightController class
 
 class World {
@@ -308,20 +378,21 @@ class World {
                const std::vector<Goal*>& goals );
         ~World();
         float GetLuminance( const b2Vec2& here );
-        bool Step( int controlVal, const std::vector<Goal*>& goals,
-                   float timestep, SimResults& results,
-                   std::vector<float>& boxDist );
+        bool Step( int controlVal, float timestep,
+                   const std::vector<Goal*>& goals,
+                   SimResults& results,
+                   std::vector<float>& puckDist );
 
     protected:
-        // std::vector<std::vector<Goal*> > goalList;
-        std::vector<Box*> boxes;
+        std::vector<Puck*> pucks;
         std::vector<Robot*> robots;
         std::vector<Wall*> groundBody;    // Boundary
         GridLightController glc;
+        float spawn;    // Distance spaw from boundary
 
         void AddBoundary( int controlVal );
         void AddRobots( void );
-        void AddBoxes( void );
+        void AddPucks( void );
         float GetTotalRobotMovement( void );
 }; // END World class
 
@@ -338,12 +409,14 @@ class GuiWorld : public World {
                   GridLightControllerSettings& glcSet,
                   const std::vector<Goal*>& goals );
         ~GuiWorld();
-        bool Step( int controlVal, const std::vector<Goal*>& goals,
-                   float timestep, SimResults& results,
-                   std::vector<float>& boxDist);
+        bool Step( int controlVal, float timestep, 
+                   const std::vector<Goal*>& goals,
+                   SimResults& results,
+                   std::vector<float>& puckDist);
         bool RequestShutdown();
     private:
-        float tl[3], tr[3], bl[3], br[3];
+        // Deliminates corners of the world: t-top, b-bottom, r-right, l-left
+        float tl[3], tr[3], bl[3], br[3]; 
         void DrawTexture( const uint8_t* pixels, unsigned int cols, 
                 unsigned int rows );
 }; // END GuiWorld class

@@ -2,9 +2,9 @@
 #include "push.hh"
 
 // Specifies composition of pixel data:
-//      1: GL_RED (element is only red component, GB both 0, alpha is 1)
-//      3: GL_RGB (element is RGB triple, alpha set to 1) 
-//      4: GL_RGBA (element composed of four components, clamp [0,1])
+//  1: GL_RED (element is only red component, GB both 0, alpha is 1)
+//  3: GL_RGB (element is RGB triple, alpha set to 1) 
+//  4: GL_RGBA (element composed of four components, clamp [0,1])
 // FORMAT must match size of DARK and LIGHT arrays
 const int FORMAT = 3;
 const uint8_t DARK[] = { 211, 211, 211 };
@@ -42,7 +42,7 @@ GridLightController::GridLightController( int controlVal,
     totalTime(0),
     glcSet(&glcSet)
 {
-    Light::radius = dimCell;
+    Light::radius = controlVal < 0 ? 100 : dimCell;
     Light::cosCritAngle = cos( atan2(Light::radius, Light::HEIGHT) );
  
     // std::cout << "[GLC] Setting Goals...\n";
@@ -61,23 +61,32 @@ GridLightController::GridLightController( int controlVal,
     }
     // PrintLayerDistribution();
 
-    // if( World::showGui ){
-    pRows = 100;
-    pCols = 100;
-    // std::cout << pRows << " " << pCols << '\n';
-    pixels = new uint8_t[pRows * pCols * FORMAT];
-    SetPixels();
-    // }
+    if( controlVal < 0 ){
+        for( Light* light: lights )
+            light->on = true;
+        lights[0]->WhereAmI();
+        std::cout << "NumLights: " << lights.size() << std::endl;
+        std::cout << "Radius: " << Light::radius << std::endl;
+        std::cout << "ON?: " << lights[0]->on << std::endl;
+    }
+
+    if( World::showGui ){
+        pRows = 100;
+        pCols = 100;
+        // std::cout << pRows << " " << pCols << '\n';
+        pixels = new uint8_t[pRows * pCols * FORMAT];
+        SetPixels();
+    }
+
 }
 
 GridLightController::~GridLightController(){
     for( auto light : lights )
         delete light;
-    // if( World::showGui )
-    delete pixels;
+    if( World::showGui )
+        delete pixels;
 }
 
-// NOTE: processed cells are marked by turning the light ON!
 void GridLightController::SetLayers( const std::vector<Goal*>& goals ){
     // Setting goal lights layer 0
     int nbourCells = 4;
@@ -157,12 +166,8 @@ void GridLightController::SetLayers( const std::vector<Goal*>& goals ){
         layerIndicies[maxLayer].push_back(right);
     }
     currentLayer = maxLayer;
-
-    // Where should we set this?
-    // activeLayers = std::min(4, maxLayer-1); 
 }
 
-// RETURN: index of n-bour if exists otherwise index of cell 
 int GridLightController::NeighbourIndex( int cell[2], neighbour_t n ){
     int row, col;
     switch(n){
@@ -275,25 +280,25 @@ void GridLightController::SetPixels( void ){
     }
 }
 
-int GridLightController::NumBoxesOutside( const std::vector<Box*>& boxes ){
+int GridLightController::NumPucksOutside( const std::vector<Puck*>& pucks ){
     int lightIndex, layer;
     int cell[2];
-    int numBoxes = 0;
+    int numPucks = 0;
 
-    for( Box* box : boxes ){
-        b2Vec2 boxCenter = box->GetCenter();
-        PointInCell( boxCenter.x, boxCenter.y, cell );
+    for( Puck* puck : pucks ){
+        b2Vec2 puckCenter = puck->GetCenter();
+        PointInCell( puckCenter.x, puckCenter.y, cell );
         lightIndex = RowColToIndex( cell[0], cell[1] );
         layer = lights[lightIndex]->layer;
         if( lightIndex >= 0 and layer <= currentLayer ){
-            // printf("Box center: (%.4f, %.4f)\n", boxCenter.x, boxCenter.y);
-            // box->WhereAmI();
+            // printf("Puck center: (%.4f, %.4f)\n", puckCenter.x, puckCenter.y);
+            // puck->WhereAmI();
             // printf("Row: %i Col: %i Layer: %i CurrentLayer: %i\n", 
             //         cell[0], cell[1], layer, currentLayer);
-            ++numBoxes;
+            ++numPucks;
         } 
     }
-    return numBoxes;
+    return numPucks;
 }
 
 void GridLightController::ToggleLayer( int layer ){
@@ -310,31 +315,31 @@ void GridLightController::TurnAllLights( bool on ){
     }
 }
 
-bool GridLightController::GoalObtained( const std::vector<Box*>& boxes, 
+bool GridLightController::GoalObtained( const std::vector<Puck*>& pucks, 
         const std::vector<Goal*>& goals, int controlVal, 
-        std::vector<float>& boxDist ){
+        std::vector<float>& puckDist ){
     bool goalFilled = false;
-    size_t boxesNearGoals = 0;
+    size_t pucksNearGoals = 0;
     int count = 0;
-    // TODO: Change this from O(bg) -> O(blog(g)) --- b: NumBoxes,
+    // TODO: Change this from O(bg) -> O(blog(g)) --- b: Numpucks,
     //       g: NumGoals --- using voronoi diagrams and preprocessing
-    for ( Box* box : boxes ){
+    for ( Puck* puck : pucks ){
         float minErr = 100;
         for( Goal* goal : goals ){
-            float err = sqrt(box->SqrDistanceTo(*goal));
+            float err = sqrt(puck->SqrDistanceTo(*goal));
             if( err < glcSet->goalError )
-                ++boxesNearGoals;
+                ++pucksNearGoals;
             minErr = std::min(minErr, err);
         }
         if( controlVal == 3 and count % 10 == 0 ){
-            boxDist.push_back(minErr);
+            puckDist.push_back(minErr);
         }
         ++count;
     }
     for( Goal* goal : goals ){
         float minErr = 100;
-        for ( Box* box : boxes ){
-            float err = sqrt(box->SqrDistanceTo(*goal));
+        for ( Puck* puck : pucks ){
+            float err = sqrt(puck->SqrDistanceTo(*goal));
             if( err < glcSet->goalError ){
                 goalFilled = true;
                 break;
@@ -376,38 +381,40 @@ float GridLightController::GetIntensity( float x, float y ){
 
 bool GridLightController::Update( int controlVal, 
         const std::vector<Goal*>& goals, 
-        const std::vector<Box*>& boxes, 
-        float timeStep, std::vector<float>& boxDist){
+        const std::vector<Puck*>& pucks, 
+        float timeStep, std::vector<float>& puckDist){
     totalTime += timeStep;
     timeElapsed += timeStep;
-    if( timeElapsed > glcSet->trialTime ){
-        timeElapsed = 0;
-        // Check that all boxes in shadow region
-        if( controlVal == 3 ){
-            std::cout << "@ time: " << totalTime << "\n"; 
-            boxDist.push_back( totalTime );
-        }
-        if( GoalObtained(boxes, goals, controlVal, boxDist) ){ 
-            // std::cout << "[GLC] Goal Obtained!\n";
-            std::cout << "===  Total Time Elapsed: " << totalTime << "\n";
+    if( controlVal >= 0 ){
+        if( timeElapsed > glcSet->trialTime ){
+            timeElapsed = 0;
+            // Check that all pucks in shadow region
+            if( controlVal == 3 ){
+                std::cout << "@ time: " << totalTime << "\n"; 
+                puckDist.push_back( totalTime );
+            }
+            if( GoalObtained(pucks, goals, controlVal, puckDist) ){ 
+                // std::cout << "[GLC] Goal Obtained!\n";
+                printf("===  Total Time Elapsed: %.2f\n", totalTime);
+                return false;
+            } else if( controlVal != 0 and 
+                       NumPucksOutside(pucks) >= goals.size() and 
+                       currentLayer > 0 ){
+                ToggleLayer(currentLayer);
+                currentLayer += expand;
+                // if( currentLayer == 0 ){
+                //     expand = 1;
+                //     ++currentLayer;
+                // } else if( currentLayer == bdLayer ){
+                //     expand = -1;
+                //     --currentLayer; 
+                // }
+                if( World::showGui )
+                    SetPixels();
+            }
+        } else if( totalTime > 10000 ){ // Hard Stop
             return false;
-        } else if( controlVal != 0 and 
-                   NumBoxesOutside(boxes) >= goals.size() and 
-                   currentLayer > 0 ){
-            ToggleLayer(currentLayer);
-            currentLayer += expand;
-            // if( currentLayer == 0 ){
-            //     expand = 1;
-            //     ++currentLayer;
-            // } else if( currentLayer == bdLayer ){
-            //     expand = -1;
-            //     --currentLayer; 
-            // }
-            // if( World::showGui )
-            SetPixels();
         }
-    } else if( totalTime > 10000 ){ // Hard Stop
-        return false;
     }
     return true;
 }

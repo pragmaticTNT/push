@@ -3,19 +3,19 @@
 # ==============================
 # Latest Revision: 2016-09-01
 
-showGui: 0          ## 1: true 0: false 
+showGui: 1          ## 1: true 0: false 
 controlVal: 0       ## 0: do nothing 
 trials: 100         ## Number of trials per "numRobots" 
 incNumBoxesBy: 0.5  ## Total boxes increased by this percent 
 incNumRobotsBy: 10  ## Number robots added to each "numRobots" 
-steps: 8            ## Number of different IND variable vals to try 
+steps: 1            ## Number of different IND variable vals to try 
 
 width: 10 
 height: 10 
-boxNum: 277 
+boxNum: 208 
 boxSize: 0.3 
 boxShape: C         ## [C]ircle, [S]quare, [H]exagon 
-robotNum: 20 
+robotNum: 40 
 robotSize: 0.225 
 
 patternNum: 1       ## (OUT OF SERVICE) 
